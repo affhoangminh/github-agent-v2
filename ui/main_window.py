@@ -1,8 +1,4 @@
-from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QPushButton, QLabel, QTableWidget, QTableWidgetItem,
-    QMessageBox, QDialog, QTextEdit
-)
+from PySide6.QtWidgets import *
 from PySide6.QtCore import Qt, QThread, Signal
 
 import requests
@@ -28,23 +24,16 @@ class FetchWorker(QThread):
             url = self.machine[6]
             full_url = f"http://{ip}{url}"
 
-            print("\n===== RUN MACHINE =====")
-            print("FULL URL:", full_url)
-
             parser_name = self.method[5]
 
+            # ===== SWITCH FETCH =====
             if "Toshiba" in parser_name:
                 raw = self.fetch_toshiba(full_url)
             else:
-                response = requests.get(full_url, timeout=5)
-                raw = response.text
-
-            parser_name = self.method[5]
-            print("👉 Load parser:", parser_name)
+                res = requests.get(full_url, timeout=5)
+                raw = res.text
 
             counter = parse_counter(raw, parser_name)
-
-            print("👉 Parse result:", counter)
 
             result = {
                 "status": "OK",
@@ -53,7 +42,6 @@ class FetchWorker(QThread):
             }
 
         except Exception as e:
-            print("❌ ERROR:", e)
             result = {
                 "status": str(e),
                 "raw": "",
@@ -62,15 +50,36 @@ class FetchWorker(QThread):
 
         self.finished.emit(result)
 
+    # ===== SELENIUM =====
+    def fetch_toshiba(self, url):
+        from selenium import webdriver
+        from selenium.webdriver.chrome.options import Options
+        from time import sleep
 
-# ================= MAIN WINDOW =================
+        options = Options()
+        options.add_argument("--headless")
+        options.add_argument("--disable-gpu")
+
+        driver = webdriver.Chrome(options=options)
+
+        print("🔥 Selenium loading Toshiba...")
+        driver.get(url)
+
+        sleep(5)
+
+        html = driver.page_source
+        driver.quit()
+
+        return html
+
+
+# ================= MAIN =================
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Agent V2 PRO")
         self.resize(1300, 750)
 
-        # 🔥 giữ thread để tránh crash
         self.workers = []
 
         self.init_ui()
@@ -78,10 +87,9 @@ class MainWindow(QMainWindow):
 
     # ================= UI =================
     def init_ui(self):
-        main_widget = QWidget()
+        main = QWidget()
         main_layout = QHBoxLayout()
 
-        # ===== SIDEBAR =====
         sidebar = QVBoxLayout()
         sidebar.addWidget(QLabel("🖨️ Agent V2"))
 
@@ -95,10 +103,9 @@ class MainWindow(QMainWindow):
 
         sidebar.addStretch()
 
-        # ===== CONTENT =====
         content = QVBoxLayout()
 
-        self.header = QLabel("📊 Dashboard máy photocopy")
+        self.header = QLabel("📊 Dashboard máy")
         self.header.setStyleSheet("font-size:20px;font-weight:bold;")
         content.addWidget(self.header)
 
@@ -113,11 +120,11 @@ class MainWindow(QMainWindow):
 
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setSelectionMode(QTableWidget.SingleSelection)
+        self.table.itemSelectionChanged.connect(self.on_select)
 
         content.addWidget(self.table)
 
-        # ===== DETAIL =====
-        self.detail = QLabel("Chọn máy để xem chi tiết")
+        self.detail = QLabel("Chọn máy")
         content.addWidget(self.detail)
 
         # ===== BUTTON =====
@@ -147,73 +154,51 @@ class MainWindow(QMainWindow):
         main_layout.addLayout(sidebar, 1)
         main_layout.addLayout(content, 5)
 
-        main_widget.setLayout(main_layout)
-        self.setCentralWidget(main_widget)
+        main.setLayout(main_layout)
+        self.setCentralWidget(main)
 
-    # ================= CHECK ONLINE =================
-    def check_online(self, ip):
-        try:
-            requests.get(f"http://{ip}", timeout=2)
-            return True
-        except:
-            return False
-
-    # ================= LOAD DATA =================
+    # ================= LOAD =================
     def load_data(self):
         machines = query("SELECT * FROM machine", fetch=True) or []
-
         self.table.setRowCount(len(machines))
 
-        for row, machine in enumerate(machines):
-            code = machine[2]
-            name = machine[3]
-            ip = machine[5]
-            url = machine[6]
-            raw = machine[13] or ""
+        for row, m in enumerate(machines):
+            code = m[2]
+            name = m[3]
+            ip = m[5]
+            url = m[6]
+            raw = m[13] or ""
 
             self.table.setItem(row, 0, QTableWidgetItem(code))
             self.table.setItem(row, 1, QTableWidgetItem(name))
             self.table.setItem(row, 2, QTableWidgetItem(ip))
 
-            # ===== STATUS =====
-            online = self.check_online(ip)
-            status = "🟢 Online" if online else "🔴 Offline"
+            # STATUS
+            status = "🟢 Online" if self.check_online(ip) else "🔴 Offline"
+            self.table.setItem(row, 3, QTableWidgetItem(status))
 
-            item_status = QTableWidgetItem(status)
-            item_status.setTextAlignment(Qt.AlignCenter)
-            self.table.setItem(row, 3, item_status)
-
-            # ===== COUNTER =====
             self.table.setItem(row, 4, QTableWidgetItem("..."))
 
-            # ===== URL BUTTON =====
+            # URL
             full_url = f"http://{ip}{url}"
             btn_url = QPushButton("🌐")
-            btn_url.setToolTip(full_url)
             btn_url.clicked.connect(lambda _, u=full_url: self.open_url(u))
             self.table.setCellWidget(row, 5, btn_url)
 
-            # ===== RAW BUTTON =====
+            # RAW
             btn_raw = QPushButton("📄")
             btn_raw.clicked.connect(lambda _, r=raw: self.show_raw(r))
             self.table.setCellWidget(row, 6, btn_raw)
 
-            # ===== ACTION BUTTON =====
+            # ACTION
             btn_fetch = QPushButton("⚡")
             btn_fetch.clicked.connect(lambda _, r=row: self.fetch_row(r))
             self.table.setCellWidget(row, 7, btn_fetch)
 
-            # ===== COLOR OFFLINE =====
-            if not online:
-                for col in range(5):
-                    item = self.table.item(row, col)
-                    if item:
-                        item.setBackground(Qt.red)
-
         self.btn_edit.setEnabled(False)
         self.btn_delete.setEnabled(False)
 
-    # ================= FETCH 1 ROW =================
+    # ================= FETCH =================
     def fetch_row(self, row):
         code = self.table.item(row, 0).text()
 
@@ -227,25 +212,18 @@ class MainWindow(QMainWindow):
             "SELECT * FROM data_method WHERE code=?",
             (machine[12],),
             fetch=True
-        )
+        )[0]
 
-        if not method:
-            QMessageBox.warning(self, "Lỗi", "Không có method")
-            return
-
-        worker = FetchWorker(machine, method[0])
-
-        # 🔥 giữ reference tránh crash
+        worker = FetchWorker(machine, method)
         self.workers.append(worker)
 
         worker.finished.connect(
-            lambda result, r=row, w=worker: self.update_row_safe(result, r, w)
+            lambda result, r=row, w=worker: self.update_row(result, r, w)
         )
 
         worker.start()
 
-    # ================= UPDATE SAFE =================
-    def update_row_safe(self, result, row, worker):
+    def update_row(self, result, row, worker):
         code = self.table.item(row, 0).text()
 
         machine = query(
@@ -257,19 +235,17 @@ class MainWindow(QMainWindow):
         if result["status"] != "OK":
             self.table.setItem(row, 4, QTableWidgetItem("❌ Error"))
         else:
-            counter = result["counter"]
+            c = result["counter"]
 
-            # ===== UPDATE UI =====
-            text = f"T:{counter.get('total',0)} | BW:{counter.get('bw',0)}"
+            text = f"T:{c.get('total',0)} | BW:{c.get('bw',0)}"
             self.table.setItem(row, 4, QTableWidgetItem(text))
 
-            # ===== 🔥 LƯU RAW =====
+            # SAVE DB
             query(
                 "UPDATE machine SET raw_data=? WHERE id=?",
                 (result["raw"], machine[0])
             )
 
-            # ===== 🔥 LƯU COUNTER LOG =====
             query("""
             INSERT INTO counter_log (
                 machine_id, timestamp,
@@ -278,29 +254,32 @@ class MainWindow(QMainWindow):
             ) VALUES (?, datetime('now'), ?, ?, ?, ?, ?, ?, ?)
             """, (
                 machine[0],
-                counter.get("total", 0),
-                counter.get("bw", 0),
-                counter.get("color", 0),
-                counter.get("copy", 0),
-                counter.get("printer", 0),
-                counter.get("scan", 0),
-                result.get("raw", "")
+                c.get("total", 0),
+                c.get("bw", 0),
+                c.get("color", 0),
+                c.get("copy", 0),
+                c.get("printer", 0),
+                c.get("scan", 0),
+                result["raw"]
             ))
 
-            print("🔥 SAVED TO DB:", counter)
-
-        # ===== cleanup thread =====
         if worker in self.workers:
             self.workers.remove(worker)
 
         worker.quit()
         worker.wait()
 
-    # ================= OPEN URL =================
+    # ================= UTIL =================
+    def check_online(self, ip):
+        try:
+            requests.get(f"http://{ip}", timeout=2)
+            return True
+        except:
+            return False
+
     def open_url(self, url):
         webbrowser.open(url)
 
-    # ================= RAW =================
     def show_raw(self, raw):
         dialog = QDialog(self)
         layout = QVBoxLayout()
@@ -314,41 +293,145 @@ class MainWindow(QMainWindow):
         dialog.resize(700, 500)
         dialog.exec()
 
-    # ================= fetch_toshiba  =================
-    def fetch_toshiba(self, url):
-        from selenium import webdriver
-        from selenium.webdriver.chrome.options import Options
-        from time import sleep
-
-        options = Options()
-        options.add_argument("--headless")
-        options.add_argument("--disable-gpu")
-
-        driver = webdriver.Chrome(options=options)
-
-        print("🔥 Selenium loading Toshiba...")
-
-        driver.get(url)
-
-        sleep(5)  # đợi JS load
-
-        html = driver.page_source
-
-        driver.quit()
-
-        return html
-
-    # ================= METHOD =================
     def open_method(self):
         dialog = MethodWindow()
         dialog.exec()
 
+    def on_select(self):
+        self.btn_edit.setEnabled(True)
+        self.btn_delete.setEnabled(True)
+
+    def get_selected_machine(self):
+        row = self.table.currentRow()
+        if row == -1:
+            return None
+
+        code = self.table.item(row, 0).text()
+        data = query(
+            "SELECT * FROM machine WHERE machine_code=?",
+            (code,),
+            fetch=True
+        )
+        return data[0] if data else None
+
     # ================= CRUD =================
     def add_machine(self):
-        QMessageBox.information(self, "Info", "Chưa triển khai")
+        dialog = QDialog(self)
+        layout = QVBoxLayout()
+
+        code = QLineEdit()
+        name = QLineEdit()
+        serial = QLineEdit()
+        ip = QLineEdit()
+        location = QLineEdit()
+
+        method = QComboBox()
+        methods = query("SELECT code FROM data_method", fetch=True)
+        for m in methods:
+            method.addItem(m[0])
+
+        url = QLineEdit()
+
+        for label, widget in [
+            ("Code", code), ("Name", name), ("Serial", serial),
+            ("IP", ip), ("Location", location),
+            ("Method", method), ("URL", url)
+        ]:
+            layout.addWidget(QLabel(label))
+            layout.addWidget(widget)
+
+        btn = QPushButton("Lưu")
+
+        def save():
+            query("""
+            INSERT INTO machine (
+                org_id, machine_code, name, serial, ip,
+                data_url, storage_code, max_days, times_per_day, note,
+                location, method_code, raw_data
+            ) VALUES (1, ?, ?, ?, ?, ?, 'RICOH', 30, 3, '',
+                      ?, ?, '')
+            """, (
+                code.text(),
+                name.text(),
+                serial.text(),
+                ip.text(),
+                url.text(),
+                location.text(),
+                method.currentText()
+            ))
+
+            dialog.accept()
+            self.load_data()
+
+        btn.clicked.connect(save)
+        layout.addWidget(btn)
+
+        dialog.setLayout(layout)
+        dialog.exec()
 
     def edit_machine(self):
-        QMessageBox.information(self, "Info", "Chưa triển khai")
+        m = self.get_selected_machine()
+        if not m:
+            return
+
+        dialog = QDialog(self)
+        layout = QVBoxLayout()
+
+        code = QLineEdit(m[2])
+        name = QLineEdit(m[3])
+        serial = QLineEdit(m[4])
+        ip = QLineEdit(m[5])
+        location = QLineEdit(m[11] or "")
+
+        method = QComboBox()
+        methods = query("SELECT code FROM data_method", fetch=True)
+        for mm in methods:
+            method.addItem(mm[0])
+        method.setCurrentText(m[12] or "")
+
+        url = QLineEdit(m[6] or "")
+
+        for label, widget in [
+            ("Code", code), ("Name", name), ("Serial", serial),
+            ("IP", ip), ("Location", location),
+            ("Method", method), ("URL", url)
+        ]:
+            layout.addWidget(QLabel(label))
+            layout.addWidget(widget)
+
+        btn = QPushButton("Update")
+
+        def save():
+            query("""
+            UPDATE machine SET
+                machine_code=?, name=?, serial=?, ip=?,
+                location=?, method_code=?, data_url=?
+            WHERE id=?
+            """, (
+                code.text(),
+                name.text(),
+                serial.text(),
+                ip.text(),
+                location.text(),
+                method.currentText(),
+                url.text(),
+                m[0]
+            ))
+
+            dialog.accept()
+            self.load_data()
+
+        btn.clicked.connect(save)
+        layout.addWidget(btn)
+
+        dialog.setLayout(layout)
+        dialog.exec()
 
     def delete_machine(self):
-        QMessageBox.information(self, "Info", "Chưa triển khai")
+        m = self.get_selected_machine()
+        if not m:
+            return
+
+        if QMessageBox.question(self, "Xóa", f"Xóa {m[2]}?") == QMessageBox.Yes:
+            query("DELETE FROM machine WHERE id=?", (m[0],))
+            self.load_data()
