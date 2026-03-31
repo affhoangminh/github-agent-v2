@@ -1,9 +1,63 @@
 import requests
 from datetime import datetime
-from database.db import query
-from core.engine import parse_counter
+
+from core.parsers import parse_counter
+
+# Selenium
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
 
 
+# ==============================
+# FETCH TOSHIBA (Selenium)
+# ==============================
+def fetch_toshiba(url):
+    print("🔥 USING SELENIUM FOR TOSHIBA")
+
+    options = Options()
+    options.add_argument("--headless")
+    options.add_argument("--disable-gpu")
+
+    driver = webdriver.Chrome(options=options)
+
+    driver.get(url)
+
+    # 🔥 FIX QUAN TRỌNG: chờ HTML có counter thật
+    WebDriverWait(driver, 10).until(
+        lambda d: "Print_Total_TotalCounter_Total" in d.page_source
+    )
+
+    html = driver.page_source
+
+    driver.quit()
+
+    return html
+
+
+# ==============================
+# FETCH RICOH (requests)
+# ==============================
+def fetch_ricoh(url):
+    print("🔥 USING REQUESTS")
+
+    headers = {
+        "User-Agent": "Mozilla/5.0"
+    }
+
+    res = requests.get(url, headers=headers, timeout=10)
+
+    print("Status:", res.status_code)
+
+    if res.status_code != 200:
+        return None
+
+    return res.text
+
+
+# ==============================
+# MAIN FETCH ENGINE
+# ==============================
 def fetch_counter(machine):
     try:
         ip = machine[5]
@@ -11,61 +65,72 @@ def fetch_counter(machine):
         parser_name = machine[12]
 
         url = f"http://{ip}{data_url}"
+
+        print("\n===== RUN MACHINE =====")
         print("FULL URL:", url)
+        print("👉 Load parser:", parser_name)
 
-        res = requests.get(url, timeout=5)
-        html = res.text
+        # =========================
+        # CHỌN DRIVER
+        # =========================
+        if "toshiba" in parser_name.lower():
+            html = fetch_toshiba(url)
+        else:
+            html = fetch_ricoh(url)
 
+        if not html:
+            print("❌ Không lấy được HTML")
+            return None
+
+        # =========================
+        # PARSE
+        # =========================
         data = parse_counter(html, parser_name)
 
+        print("👉 Parse result:", data)
+
+        # =========================
+        # ADD META
+        # =========================
         data["time"] = str(datetime.now())
-        data["raw"] = html[:500]
+
+        # 🔥 FIX QUAN TRỌNG: lưu FULL RAW
+        data["raw"] = html
 
         return data
 
     except Exception as e:
         print("❌ Fetch error:", e)
         return None
+    
+from database.db import query
 
-
-def save_counter(machine_id, data):
-    print("🔥 SAVING TO DB:", data)
-
-    query("""
-    INSERT INTO counter_log (
-        machine_id, timestamp, total, bw, color,
-        copy, printer, scan, raw
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        machine_id,
-        data.get("time"),
-        data.get("total", 0),
-        data.get("bw", 0),
-        data.get("color", 0),
-        data.get("copy", 0),
-        data.get("printer", 0),
-        data.get("scan", 0),
-        data.get("raw", "")
-    ))
-
-
-# 🔥 CORE SERVICE (dùng chung cho UI + scheduler)
 def run_counter_once():
-    machines = query("SELECT * FROM machine", fetch=True) or []
+    machines = query("SELECT * FROM machine", fetch=True)
 
     print("👉 TOTAL MACHINES:", len(machines))
 
-    results = []
+    for machine in machines:
+        result = fetch_counter(machine)
 
-    for m in machines:
-        print("\n===== RUN MACHINE =====")
+        if result:
+            print("🔥 SAVING TO DB:", result)
 
-        data = fetch_counter(m)
+            query("""
+                INSERT INTO counter_log 
+                (machine_id, timestamp, total, bw, color, copy, printer, scan, raw)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                machine[0],  # id
+                result["time"],
+                result.get("total", 0),
+                result.get("bw", 0),
+                result.get("color", 0),
+                result.get("copy", 0),
+                result.get("printer", 0),
+                result.get("scan", 0),
+                result.get("raw", "")
+            ))
 
-        if data:
-            save_counter(m[0], data)
-            results.append((m, data))
         else:
-            print("❌ No data")
-
-    return results
+            print("❌ FAIL MACHINE:", machine[0])
