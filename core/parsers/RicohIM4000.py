@@ -1,18 +1,20 @@
 import re
 
+
 def extract_between(raw, start, end):
     match = re.search(start + r"(.*?)" + end, raw, re.S | re.I)
     return match.group(1) if match else ""
 
 
-def extract_number(block):
-    match = re.search(r">([\d,]+)<", block)
-    if match:
-        return int(match.group(1).replace(",", ""))
-    return 0
+def extract_td_numbers(block):
+    numbers = re.findall(r"<td[^>]*>\s*([\d,]+)\s*</td>", block, re.I)
+    numbers = [int(n.replace(",", "")) for n in numbers]
+    return numbers
 
 
 def parse(raw):
+    print("🔥 RUN PARSER RICOH IM4000")
+
     result = {
         "total": 0,
         "bw": 0,
@@ -25,27 +27,33 @@ def parse(raw):
     if not raw:
         return result
 
-    # ================= TOTAL =================
-    total_block = re.search(r"Total Counter.*?</tr>", raw, re.S | re.I)
-    if total_block:
-        result["total"] = extract_number(total_block.group(0))
+    # TOTAL
+    total_match = re.search(
+        r"Total Counter.*?<td[^>]*>([\d,]+)</td>",
+        raw, re.S | re.I
+    )
+    if total_match:
+        result["total"] = int(total_match.group(1).replace(",", ""))
 
-    # ================= COPIER =================
+    # COPIER
     copier_section = extract_between(raw, "Copier", "Printer")
-    if copier_section:
-        result["copy"] = extract_number(copier_section)
+    nums = extract_td_numbers(copier_section)
+    if nums:
+        result["copy"] = nums[0]
 
-    # ================= PRINTER =================
+    # PRINTER
     printer_section = extract_between(raw, "Printer", "Fax")
-    if printer_section:
-        result["printer"] = extract_number(printer_section)
+    nums = extract_td_numbers(printer_section)
+    if nums:
+        result["printer"] = nums[0]
 
-    # ================= SCAN =================
+    # SCAN
     scan_section = extract_between(raw, "Scanner Send", "Coverage")
-    if scan_section:
-        result["scan"] = extract_number(scan_section)
+    nums = extract_td_numbers(scan_section)
+    if nums:
+        result["scan"] = nums[-1]
 
-    # ================= BW =================
-    result["bw"] = result["copy"] + result["printer"]
+    result["bw"] = result["total"]
+    result["color"] = 0
 
     return result

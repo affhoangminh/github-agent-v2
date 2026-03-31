@@ -6,6 +6,7 @@ from PySide6.QtWidgets import QApplication
 from database.init_db import init_db
 from database.db import query
 from ui.main_window import MainWindow
+from core.counter_engine import run_counter_once
 
 
 DB_PATH = "data/agent.db"
@@ -73,6 +74,8 @@ def main():
 
     window = MainWindow()
     window.show()
+
+    run_counter_once()
 
     sys.exit(app.exec())
 
