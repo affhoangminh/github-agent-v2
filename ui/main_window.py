@@ -286,21 +286,24 @@ class MainWindow(QMainWindow):
         table.setColumnCount(7)
 
         table.setHorizontalHeaderLabels([
-            "Mã", "Tên", "IP",
+            "Mã", "Tên Máy", "IP",
             "Online", "Xem",
-            "Vị trí", "Ghi chú"
+            "Vị trí", "Counter"
         ])
 
         header = table.horizontalHeader()
 
-        # 👉 CHO PHÉP RESIZE GIỐNG TABLE LOG
+        # ✅ Cho resize tự do
         header.setSectionResizeMode(QHeaderView.Interactive)
 
-        # 👉 CỘT TÊN GIÃN RA
+        # ✅ Cột Tên giãn mạnh (rất quan trọng)
         header.setSectionResizeMode(1, QHeaderView.Stretch)
 
         table.setSelectionBehavior(QTableWidget.SelectRows)
         table.setEditTriggers(QTableWidget.NoEditTriggers)
+
+        # 🔥 QUAN TRỌNG: click → load log
+        table.cellClicked.connect(self.on_machine_selected)
 
         return table
 
@@ -321,7 +324,7 @@ class MainWindow(QMainWindow):
             ip = m["ip_machine"]
             path = m["path_machine"]
             location = m["location"] or ""
-            note = m["note"] or ""
+            enabled = m["counter_enabled"]
 
             # ===== TEXT =====
             self.table_machine.setItem(row, 0, QTableWidgetItem(code))
@@ -338,15 +341,17 @@ class MainWindow(QMainWindow):
             url = f"http://{ip}{path}"
             btn = QPushButton("Xem")
             btn.setToolTip(url)
-
             btn.clicked.connect(lambda _, u=url: webbrowser.open(u))
             self.table_machine.setCellWidget(row, 4, btn)
 
             # ===== LOCATION =====
             self.table_machine.setItem(row, 5, QTableWidgetItem(location))
 
-            # ===== NOTE =====
-            self.table_machine.setItem(row, 6, QTableWidgetItem(note))
+            # ===== COUNTER ENABLED =====
+            item_counter = QTableWidgetItem("✔️" if enabled else "❌")
+            item_counter.setTextAlignment(Qt.AlignCenter)
+
+            self.table_machine.setItem(row, 6, item_counter)
 
     # ================= LOG =================
     def on_machine_selected(self, row, col):

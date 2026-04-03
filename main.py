@@ -19,7 +19,7 @@ def reset_db():
         print("🗑️ Deleted old database")
 
     init_db()
-    seed_data()
+    # seed_data()
 
     print("✅ Database reset complete")
 
@@ -95,9 +95,8 @@ def main():
         print("⚙️ First run → init database")
         init_db()
         seed_data()
-    else:
-        print("✅ Database exists")
-
+    # else:
+    #    print("✅ Database exists")
 
     # ===== RUN UI =====
     app = QApplication(sys.argv)
