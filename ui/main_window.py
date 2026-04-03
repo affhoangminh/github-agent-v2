@@ -14,6 +14,7 @@ import socket
 
 from database.db import query
 from core.counter_engine import run_counter_once
+from ui.method_window import MethodWindow
 
 
 # ================= LOG =================
@@ -160,15 +161,19 @@ class MainWindow(QMainWindow):
         header.addStretch()
 
         self.btn_donvi = QPushButton("ĐƠN VỊ")
+        self.btn_machine = QPushButton("MÁY")
         self.btn_method = QPushButton("METHOD")
         self.btn_counter = QPushButton("COUNTER")
         self.btn_exit = QPushButton("THOÁT")
 
-        for b in [self.btn_donvi, self.btn_method, self.btn_counter, self.btn_exit]:
+        for b in [self.btn_donvi, self.btn_machine, self.btn_method, self.btn_counter, self.btn_exit]:
             header.addWidget(b)
 
-        self.btn_exit.clicked.connect(self.close)
+        
         self.btn_donvi.clicked.connect(self.open_unit_dialog)
+        self.btn_machine.clicked.connect(self.open_machine_window)
+        self.btn_method.clicked.connect(self.open_method_window)
+        self.btn_exit.clicked.connect(self.close)
 
         layout.addLayout(header)
 
@@ -261,22 +266,42 @@ class MainWindow(QMainWindow):
         if dlg.exec():
             self.load_unit_info()
 
+    # ================= OPEN METHOD =================
+    def open_method_window(self):
+        dlg = MethodWindow()
+        dlg.exec()
+
+    # ================= OPEN machine =================
+    def open_machine_window(self):
+        from ui.machine_window import MachineWindow
+        dlg = MachineWindow()
+        dlg.exec()
+        self.load_machines()  # reload sau khi đóng
+
     # ================= MACHINE =================
+    from PySide6.QtWidgets import QHeaderView
+
     def create_machine_table(self):
         table = QTableWidget()
         table.setColumnCount(7)
-        table.setHorizontalHeaderLabels(["Mã", "Tên", "IP", "Online", "Xem", "RAW", "ON/OFF"])
+
+        table.setHorizontalHeaderLabels([
+            "Mã", "Tên", "IP",
+            "Online", "Xem",
+            "Vị trí", "Ghi chú"
+        ])
 
         header = table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(6, QHeaderView.ResizeToContents)
 
-        table.cellClicked.connect(self.on_machine_selected)
+        # 👉 CHO PHÉP RESIZE GIỐNG TABLE LOG
+        header.setSectionResizeMode(QHeaderView.Interactive)
+
+        # 👉 CỘT TÊN GIÃN RA
+        header.setSectionResizeMode(1, QHeaderView.Stretch)
+
+        table.setSelectionBehavior(QTableWidget.SelectRows)
+        table.setEditTriggers(QTableWidget.NoEditTriggers)
+
         return table
 
     def create_log_table(self):
@@ -292,19 +317,36 @@ class MainWindow(QMainWindow):
 
         for row, m in enumerate(machines):
             code = m["code_machine"]
+            name = m["name_machine"]
             ip = m["ip_machine"]
             path = m["path_machine"]
+            location = m["location"] or ""
+            note = m["note"] or ""
 
+            # ===== TEXT =====
             self.table_machine.setItem(row, 0, QTableWidgetItem(code))
-            self.table_machine.setItem(row, 1, QTableWidgetItem(m["name_machine"]))
+            self.table_machine.setItem(row, 1, QTableWidgetItem(name))
             self.table_machine.setItem(row, 2, QTableWidgetItem(ip))
 
+            # ===== ONLINE =====
             online = self.check_online(ip)
-            self.table_machine.setItem(row, 3, QTableWidgetItem("🟢" if online else "🔴"))
+            item_online = QTableWidgetItem("🟢" if online else "🔴")
+            item_online.setTextAlignment(Qt.AlignCenter)
+            self.table_machine.setItem(row, 3, item_online)
 
+            # ===== BUTTON XEM =====
+            url = f"http://{ip}{path}"
             btn = QPushButton("Xem")
-            btn.clicked.connect(lambda _, u=f"http://{ip}{path}": webbrowser.open(u))
+            btn.setToolTip(url)
+
+            btn.clicked.connect(lambda _, u=url: webbrowser.open(u))
             self.table_machine.setCellWidget(row, 4, btn)
+
+            # ===== LOCATION =====
+            self.table_machine.setItem(row, 5, QTableWidgetItem(location))
+
+            # ===== NOTE =====
+            self.table_machine.setItem(row, 6, QTableWidgetItem(note))
 
     # ================= LOG =================
     def on_machine_selected(self, row, col):

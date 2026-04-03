@@ -6,7 +6,7 @@ class MethodWindow(QDialog):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Quản lý Method")
-        self.resize(800, 500)
+        self.resize(900, 500)
 
         self.init_ui()
         self.load_data()
@@ -14,15 +14,13 @@ class MethodWindow(QDialog):
     def init_ui(self):
         layout = QVBoxLayout()
 
-        # TABLE
         self.table = QTableWidget()
         self.table.setColumnCount(5)
         self.table.setHorizontalHeaderLabels([
-            "Code", "Name", "URL", "Parser", "Counter"
+            "Code", "Name", "Path", "Parser", "Counter"
         ])
         layout.addWidget(self.table)
 
-        # BUTTON
         btn_layout = QHBoxLayout()
 
         btn_add = QPushButton("➕ Thêm")
@@ -38,21 +36,20 @@ class MethodWindow(QDialog):
         btn_layout.addWidget(btn_delete)
 
         layout.addLayout(btn_layout)
-
         self.setLayout(layout)
 
     # ================= LOAD =================
     def load_data(self):
-        data = query("SELECT * FROM data_method", fetch=True)
+        data = query("SELECT * FROM danh_muc_method", fetch=True)
 
         self.table.setRowCount(len(data))
 
         for i, m in enumerate(data):
-            self.table.setItem(i, 0, QTableWidgetItem(m[1]))
-            self.table.setItem(i, 1, QTableWidgetItem(m[2]))
-            self.table.setItem(i, 2, QTableWidgetItem(m[3]))
-            self.table.setItem(i, 3, QTableWidgetItem(m[4]))
-            self.table.setItem(i, 4, QTableWidgetItem(m[5]))
+            self.table.setItem(i, 0, QTableWidgetItem(m["code_method"]))
+            self.table.setItem(i, 1, QTableWidgetItem(m["name_method"]))
+            self.table.setItem(i, 2, QTableWidgetItem(m["path_method"]))
+            self.table.setItem(i, 3, QTableWidgetItem(m["parser_method"]))
+            self.table.setItem(i, 4, QTableWidgetItem(m["counter_method"]))
 
     def get_selected(self):
         row = self.table.currentRow()
@@ -60,7 +57,12 @@ class MethodWindow(QDialog):
             return None
 
         code = self.table.item(row, 0).text()
-        data = query("SELECT * FROM data_method WHERE code=?", (code,), fetch=True)
+
+        data = query("""
+            SELECT * FROM danh_muc_method
+            WHERE code_method=?
+        """, (code,), fetch=True)
+
         return data[0] if data else None
 
     # ================= ADD =================
@@ -70,7 +72,7 @@ class MethodWindow(QDialog):
 
         code = QLineEdit()
         name = QLineEdit()
-        url = QLineEdit()
+        path = QLineEdit()
         parser = QLineEdit()
         counter = QLineEdit()
 
@@ -80,8 +82,8 @@ class MethodWindow(QDialog):
         layout.addWidget(QLabel("Name"))
         layout.addWidget(name)
 
-        layout.addWidget(QLabel("URL"))
-        layout.addWidget(url)
+        layout.addWidget(QLabel("Path"))
+        layout.addWidget(path)
 
         layout.addWidget(QLabel("Parser Method"))
         layout.addWidget(parser)
@@ -93,12 +95,13 @@ class MethodWindow(QDialog):
 
         def save():
             query("""
-            INSERT INTO data_method (code, name, data_url, parser_method, counter_method)
-            VALUES (?, ?, ?, ?, ?)
+                INSERT INTO danh_muc_method
+                (code_method, name_method, path_method, parser_method, counter_method)
+                VALUES (?, ?, ?, ?, ?)
             """, (
                 code.text(),
                 name.text(),
-                url.text(),
+                path.text(),
                 parser.text(),
                 counter.text()
             ))
@@ -121,11 +124,11 @@ class MethodWindow(QDialog):
         dialog = QDialog(self)
         layout = QVBoxLayout()
 
-        code = QLineEdit(m[1])
-        name = QLineEdit(m[2])
-        url = QLineEdit(m[3])
-        parser = QLineEdit(m[4])
-        counter = QLineEdit(m[5])
+        code = QLineEdit(m["code_method"])
+        name = QLineEdit(m["name_method"])
+        path = QLineEdit(m["path_method"])
+        parser = QLineEdit(m["parser_method"])
+        counter = QLineEdit(m["counter_method"])
 
         layout.addWidget(QLabel("Code"))
         layout.addWidget(code)
@@ -133,8 +136,8 @@ class MethodWindow(QDialog):
         layout.addWidget(QLabel("Name"))
         layout.addWidget(name)
 
-        layout.addWidget(QLabel("URL"))
-        layout.addWidget(url)
+        layout.addWidget(QLabel("Path"))
+        layout.addWidget(path)
 
         layout.addWidget(QLabel("Parser"))
         layout.addWidget(parser)
@@ -146,16 +149,17 @@ class MethodWindow(QDialog):
 
         def save():
             query("""
-            UPDATE data_method
-            SET code=?, name=?, data_url=?, parser_method=?, counter_method=?
-            WHERE id=?
+                UPDATE danh_muc_method
+                SET code_method=?, name_method=?, path_method=?,
+                    parser_method=?, counter_method=?
+                WHERE code_method=?
             """, (
                 code.text(),
                 name.text(),
-                url.text(),
+                path.text(),
                 parser.text(),
                 counter.text(),
-                m[0]
+                m["code_method"]
             ))
 
             dialog.accept()
@@ -173,5 +177,9 @@ class MethodWindow(QDialog):
         if not m:
             return
 
-        query("DELETE FROM data_method WHERE id=?", (m[0],))
+        query("""
+            DELETE FROM danh_muc_method
+            WHERE code_method=?
+        """, (m["code_method"],))
+
         self.load_data()
