@@ -4,17 +4,12 @@ DB_PATH = "data/agent.db"
 
 
 def get_connection():
-    return sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row  # 🔥 QUAN TRỌNG
+    return conn
 
 
 def query(sql, params=(), fetch=False):
-    """
-    query dùng chung cho toàn hệ thống
-
-    fetch=True  → trả dữ liệu
-    fetch=False → commit
-    """
-
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -23,7 +18,7 @@ def query(sql, params=(), fetch=False):
 
         if fetch:
             rows = cursor.fetchall()
-            return rows
+            return [dict(row) for row in rows]  # 🔥 convert dict
 
         conn.commit()
         return True

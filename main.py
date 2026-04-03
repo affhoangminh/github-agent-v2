@@ -26,32 +26,65 @@ def reset_db():
 
 # ================= SEED DATA =================
 def seed_data():
-    # phương thức lấy data
+    # ===== ĐƠN VỊ =====
     query("""
-    INSERT INTO data_method (code, name, data_url, raw_type, parser)
-    VALUES
-    ('R001', 'Ricoh IM Series', '/web/guest/en/websys/status/getUnificationCounter.cgi', 'HTML', 'ricoh_parser'),
-    ('T001', 'Toshiba E Series', '/Counters/Counter.html', 'HTML', 'toshiba_parser')
+    INSERT INTO danh_muc_don_vi (
+        code_don_vi, name_don_vi, address_don_vi,
+        contact_name, contact_phone,
+        ward_don_vi, city_don_vi,
+        license, hardware_id, id_donvi
+    )
+    VALUES (
+        'DV001',
+        'Công ty Demo',
+        'Thái Nguyên',
+        'Admin',
+        '0123456789',
+        'Phường A',
+        'Thái Nguyên',
+        'LIC001',
+        'HW001',
+        1
+    )
     """)
 
-    # máy demo
+    # ===== METHOD =====
+    query("""
+    INSERT INTO danh_muc_method (
+        code_method, name_method, path_method,
+        parser_method, counter_method
+    )
+    VALUES
+    ('R001', 'Ricoh IM Series',
+     '/web/guest/en/websys/status/getUnificationCounter.cgi',
+     'requests', 'RicohIM4000'),
+
+    ('T001', 'Toshiba E Series',
+     '/Counters/Counter.html',
+     'requests', 'ToshibaE')
+    """)
+
+    # ===== MACHINE =====
     query("""
     INSERT INTO machine (
-        org_id, machine_code, name, serial,
-        storage_code, max_days, times_per_day, note,
-        location, method_code, data_url, counter_parser, raw_data
-    ) VALUES
-    (1, 'R001', 'Photocopy Ricoh IM 4000', '192.168.1.10',
-     'RICOH', 30, 3, '',
-     'Phòng Kế Toán', 'R001',
+        code_machine, name_machine, serial_machine,
+        location, note, counter_enabled,
+        ip_machine, path_machine,
+        max_days, times_per_day,
+        code_method, raw_data, code_don_vi
+    )
+    VALUES
+    ('M001', 'Ricoh IM 4000', '192.168.1.10',
+     'Phòng Kế Toán', '', 1,
+     '192.168.1.10',
      '/web/guest/en/websys/status/getUnificationCounter.cgi',
-     'ricoh_parser', ''),
+     30, 3, 'R001', '', 'DV001'),
 
-    (1, 'T001', 'Photocopy Toshiba E3518A', '192.168.0.181',
-     'TOSHIBA', 30, 3, '',
-     'Phòng Kinh Doanh', 'T001',
+    ('M002', 'Toshiba E3518A', '192.168.0.181',
+     'Phòng Kinh Doanh', '', 1,
+     '192.168.0.181',
      '/Counters/Counter.html',
-     'toshiba_parser', '')
+     30, 3, 'T001', '', 'DV001')
     """)
 
 
@@ -62,12 +95,9 @@ def main():
         print("⚙️ First run → init database")
         init_db()
         seed_data()
-
     else:
         print("✅ Database exists")
 
-    # 🚫 KHÔNG chạy scheduler (UI mode)
-    print("🛑 Scheduler OFF (UI Mode)")
 
     # ===== RUN UI =====
     app = QApplication(sys.argv)
@@ -75,6 +105,7 @@ def main():
     window = MainWindow()
     window.show()
 
+    # chạy test 1 lần lấy counter
     run_counter_once()
 
     sys.exit(app.exec())

@@ -1,136 +1,174 @@
 import requests
+import importlib
 from datetime import datetime
 
-from core.parsers import parse_counter
+from database.db import query
 
-# Selenium
+# Selenium (nếu cần)
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 
 
 # ==============================
-# FETCH TOSHIBA (Selenium)
+# FETCH HTML (REQUESTS)
 # ==============================
-def fetch_toshiba(url):
-    print("🔥 USING SELENIUM FOR TOSHIBA")
+def fetch_requests(url):
+    try:
+        headers = {"User-Agent": "Mozilla/5.0"}
+        res = requests.get(url, headers=headers, timeout=10)
 
-    options = Options()
-    options.add_argument("--headless")
-    options.add_argument("--disable-gpu")
+        if res.status_code != 200:
+            print("❌ HTTP ERROR:", res.status_code)
+            return None
 
-    driver = webdriver.Chrome(options=options)
+        return res.text
 
-    driver.get(url)
-
-    # 🔥 FIX QUAN TRỌNG: chờ HTML có counter thật
-    WebDriverWait(driver, 10).until(
-        lambda d: "Print_Total_TotalCounter_Total" in d.page_source
-    )
-
-    html = driver.page_source
-
-    driver.quit()
-
-    return html
-
-
-# ==============================
-# FETCH RICOH (requests)
-# ==============================
-def fetch_ricoh(url):
-    print("🔥 USING REQUESTS")
-
-    headers = {
-        "User-Agent": "Mozilla/5.0"
-    }
-
-    res = requests.get(url, headers=headers, timeout=10)
-
-    print("Status:", res.status_code)
-
-    if res.status_code != 200:
+    except Exception as e:
+        print("❌ Requests error:", e)
         return None
 
-    return res.text
-
 
 # ==============================
-# MAIN FETCH ENGINE
+# FETCH HTML (SELENIUM)
 # ==============================
-def fetch_counter(machine):
+def fetch_selenium(url):
     try:
-        ip = machine[5]
-        data_url = machine[6]
-        parser_name = machine[12]
+        print("🔥 USING SELENIUM")
 
-        url = f"http://{ip}{data_url}"
+        options = Options()
+        options.add_argument("--headless")
+        options.add_argument("--disable-gpu")
 
+        driver = webdriver.Chrome(options=options)
+        driver.get(url)
+
+        WebDriverWait(driver, 10).until(
+            lambda d: d.page_source is not None
+        )
+
+        html = driver.page_source
+        driver.quit()
+
+        return html
+
+    except Exception as e:
+        print("❌ Selenium error:", e)
+        return None
+
+
+# ==============================
+# FETCH + PARSE 1 MACHINE
+# ==============================
+def process_machine(machine):
+    try:
         print("\n===== RUN MACHINE =====")
-        print("FULL URL:", url)
-        print("👉 Load parser:", parser_name)
+
+        code_machine = machine["code_machine"]
+        ip = machine["ip_machine"]
+        path = machine["path_machine"]
+        code_method = machine["code_method"]
 
         # =========================
-        # CHỌN DRIVER
+        # LẤY METHOD
         # =========================
-        if "toshiba" in parser_name.lower():
-            html = fetch_toshiba(url)
+        method = query(
+            "SELECT * FROM danh_muc_method WHERE code_method = ?",
+            (code_method,),
+            fetch=True
+        )
+
+        if not method:
+            print("❌ Không tìm thấy method:", code_method)
+            return None
+
+        method = method[0]
+
+        parser_method = method["parser_method"]      # requests / selenium
+        counter_method = method["counter_method"]    # tên file parser
+
+        # =========================
+        # BUILD URL
+        # =========================
+        url = f"http://{ip}{path}"
+
+        print("👉 URL:", url)
+        print("👉 parser_method:", parser_method)
+        print("👉 counter_method:", counter_method)
+
+        # =========================
+        # FETCH HTML
+        # =========================
+        if parser_method == "selenium":
+            raw_html = fetch_selenium(url)
         else:
-            html = fetch_ricoh(url)
+            raw_html = fetch_requests(url)
 
-        if not html:
+        if not raw_html:
             print("❌ Không lấy được HTML")
             return None
 
         # =========================
-        # PARSE
+        # PARSE (DYNAMIC IMPORT)
         # =========================
-        data = parse_counter(html, parser_name)
+        module_path = f"core.parsers.{counter_method}"
 
-        print("👉 Parse result:", data)
+        parser_module = importlib.import_module(module_path)
+
+        if not hasattr(parser_module, "parse"):
+            raise Exception(f"{counter_method} thiếu hàm parse()")
+
+        result = parser_module.parse(raw_html)
+
+        print("👉 RESULT:", result)
 
         # =========================
-        # ADD META
+        # SAVE DB
         # =========================
-        data["time"] = str(datetime.now())
+        query("""
+        INSERT INTO counter_log (
+            code_machine,
+            timestamp,
+            total_counter,
+            bw_counter,
+            color_counter,
+            copy_counter,
+            printer_counter,
+            scan_counter,
+            raw_counter
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            code_machine,
+            str(datetime.now()),
+            result.get("total", 0),
+            result.get("bw", 0),
+            result.get("color", 0),
+            result.get("copy", 0),
+            result.get("printer", 0),
+            result.get("scan", 0),
+            raw_html
+        ))
 
-        # 🔥 FIX QUAN TRỌNG: lưu FULL RAW
-        data["raw"] = html
+        print("✅ Saved:", code_machine)
 
-        return data
+        return True
 
     except Exception as e:
-        print("❌ Fetch error:", e)
+        print("❌ PROCESS ERROR:", e)
         return None
-    
-from database.db import query
 
+
+# ==============================
+# RUN ALL MACHINES
+# ==============================
 def run_counter_once():
-    machines = query("SELECT * FROM machine", fetch=True)
+    machines = query("""
+        SELECT * FROM machine
+        WHERE counter_enabled = 1
+    """, fetch=True)
 
     print("👉 TOTAL MACHINES:", len(machines))
 
     for machine in machines:
-        result = fetch_counter(machine)
-
-        if result:
-            print("🔥 SAVING TO DB:", result)
-
-            query("""
-                INSERT INTO counter_log 
-                (machine_id, timestamp, total, bw, color, copy, printer, scan, raw)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                machine[0],  # id
-                result["time"],
-                result.get("total", 0),
-                result.get("bw", 0),
-                result.get("color", 0),
-                result.get("copy", 0),
-                result.get("printer", 0),
-                result.get("scan", 0),
-                result.get("raw", "")
-            ))
-
-        else:
-            print("❌ FAIL MACHINE:", machine[0])
+        process_machine(machine)

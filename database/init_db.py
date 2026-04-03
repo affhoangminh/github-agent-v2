@@ -1,101 +1,65 @@
-from database.db import query
-
-
-# ================= INIT DATABASE =================
 def init_db():
-    # ===== ORGANIZATION =====
+
+    # ===== DANH MỤC ĐƠN VỊ =====
     query("""
-    CREATE TABLE IF NOT EXISTS organization (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        license TEXT,
-        org_code TEXT,
-        name TEXT,
-        address TEXT,
+    CREATE TABLE IF NOT EXISTS danh_muc_don_vi (
+        code_don_vi TEXT PRIMARY KEY,
+        name_don_vi TEXT,
+        address_don_vi TEXT,
         contact_name TEXT,
-        contact_phone TEXT
+        contact_phone TEXT,
+        ward_don_vi TEXT,
+        city_don_vi TEXT,
+        license TEXT,
+        hardware_id TEXT,
+        id_donvi INTEGER DEFAULT 1
     )
     """)
 
-    # ===== DATA METHOD (QUAN TRỌNG) =====
+    # ===== DANH MỤC METHOD =====
     query("""
-    CREATE TABLE IF NOT EXISTS data_method (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        code TEXT UNIQUE,
-        name TEXT,
-        data_url TEXT,
-        raw_type TEXT,
-        parser TEXT
+    CREATE TABLE IF NOT EXISTS danh_muc_method (
+        code_method TEXT PRIMARY KEY,
+        name_method TEXT,
+        path_method TEXT,
+        parser_method TEXT,
+        counter_method TEXT
     )
     """)
 
     # ===== MACHINE =====
     query("""
     CREATE TABLE IF NOT EXISTS machine (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        org_id INTEGER,
-        machine_code TEXT UNIQUE,
-        name TEXT,
-        serial TEXT,
-        storage_code TEXT,
+        code_machine TEXT PRIMARY KEY,
+        name_machine TEXT,
+        serial_machine TEXT,
+        location TEXT,
+        note TEXT,
+        counter_enabled INTEGER DEFAULT 1,
+        ip_machine TEXT,
+        path_machine TEXT,
         max_days INTEGER,
         times_per_day INTEGER,
-        note TEXT,
-
-        location TEXT,
-        method_code TEXT,
-        data_url TEXT,
-        raw_data TEXT
+        code_method TEXT,
+        raw_data TEXT,
+        code_don_vi TEXT
     )
     """)
 
     # ===== COUNTER LOG =====
     query("""
     CREATE TABLE IF NOT EXISTS counter_log (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        machine_id INTEGER,
+        id_counter INTEGER PRIMARY KEY AUTOINCREMENT,
+        code_machine TEXT,
         timestamp TEXT,
-        total INTEGER,
-        bw INTEGER,
-        color INTEGER,
-        copy INTEGER,
-        printer INTEGER,
-        scan INTEGER,
-        raw TEXT
+        total_counter INTEGER,
+        bw_counter INTEGER,
+        color_counter INTEGER,
+        copy_counter INTEGER,
+        printer_counter INTEGER,
+        scan_counter INTEGER,
+        raw_counter TEXT
     )
     """)
 
-    print("✅ DB Initialized")
-
-
-# ================= SEED DATA =================
-def seed_data():
-    # tránh insert trùng
-    exists = query("SELECT * FROM data_method LIMIT 1", fetch=True)
-    if exists:
-        return
-
-    # ===== DATA METHOD =====
-    query("""
-    INSERT INTO data_method (code, name, data_url, raw_type, parser)
-    VALUES
-    ('R001', 'Ricoh IM Series', '/web/guest/en/websys/status/getUnificationCounter.cgi', 'HTML'),
-    ('R002', 'Ricoh Counter Page', '/web/guest/en/websys/webArch/mainFrame.cgi', 'HTML'),
-    ('T001', 'Toshiba E Series', '/Counters/Counter.html', 'HTML', 'toshiba_parser')
-    """)
-
-    # ===== ORGANIZATION DEMO =====
-    query("""
-    INSERT INTO organization (
-        license, org_code, name, address, contact_name, contact_phone
-    )
-    VALUES (
-        'LIC001',
-        'ORG001',
-        'Công ty Demo',
-        'Thái Nguyên',
-        'Admin',
-        '0123456789'
-    )
-    """)
-
-    print("✅ Seeded data_method & organization")
+    print("✅ DB Initialized (NEW SCHEMA)")

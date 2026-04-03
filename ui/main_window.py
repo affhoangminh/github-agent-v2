@@ -1,437 +1,346 @@
-from PySide6.QtWidgets import *
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtWidgets import (
+    QMainWindow, QWidget, QLabel, QPushButton,
+    QVBoxLayout, QHBoxLayout, QGridLayout,
+    QTableWidget, QTableWidgetItem,
+    QTextEdit, QDialog, QHeaderView
+)
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
 
-import requests
+import threading
+import sys
 import webbrowser
+import socket
 
 from database.db import query
-from ui.method_window import MethodWindow
-from core.engine import parse_counter
+from core.counter_engine import run_counter_once
 
 
-# ================= THREAD =================
-class FetchWorker(QThread):
-    finished = Signal(dict)
+# ================= LOG =================
+class LogStream:
+    def __init__(self, text_edit):
+        self.text_edit = text_edit
 
-    def __init__(self, machine, method):
-        super().__init__()
-        self.machine = machine
-        self.method = method
+    def write(self, message):
+        if message.strip():
+            self.text_edit.append(message)
 
-    def run(self):
-        try:
-            ip = self.machine[5]
-            url = self.machine[6]
-            full_url = f"http://{ip}{url}"
+    def flush(self):
+        pass
 
-            parser_name = self.method[5]
 
-            # ===== SWITCH FETCH =====
-            if "Toshiba" in parser_name:
-                raw = self.fetch_toshiba(full_url)
-            else:
-                res = requests.get(full_url, timeout=5)
-                raw = res.text
+# ================= UNIT FORM =================
+class UnitDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
 
-            counter = parse_counter(raw, parser_name)
+        self.setWindowTitle("Quản lý Đơn Vị")
+        self.resize(500, 350)
 
-            result = {
-                "status": "OK",
-                "raw": raw,
-                "counter": counter,
-            }
+        layout = QGridLayout()
 
-        except Exception as e:
-            result = {
-                "status": str(e),
-                "raw": "",
-                "counter": {},
-            }
+        self.txt_code = QTextEdit()
+        self.txt_name = QTextEdit()
+        self.txt_address = QTextEdit()
+        self.txt_ward = QTextEdit()
+        self.txt_city = QTextEdit()
+        self.txt_contact = QTextEdit()
+        self.txt_phone = QTextEdit()
 
-        self.finished.emit(result)
+        layout.addWidget(QLabel("Mã Đơn Vị"), 0, 0)
+        layout.addWidget(self.txt_code, 0, 1)
 
-    # ===== SELENIUM =====
-    def fetch_toshiba(self, url):
-        from selenium import webdriver
-        from selenium.webdriver.chrome.options import Options
-        from time import sleep
+        layout.addWidget(QLabel("Tên Đơn Vị"), 1, 0)
+        layout.addWidget(self.txt_name, 1, 1)
 
-        options = Options()
-        options.add_argument("--headless")
-        options.add_argument("--disable-gpu")
+        layout.addWidget(QLabel("Địa chỉ"), 2, 0)
+        layout.addWidget(self.txt_address, 2, 1)
 
-        driver = webdriver.Chrome(options=options)
+        layout.addWidget(QLabel("Phường"), 3, 0)
+        layout.addWidget(self.txt_ward, 3, 1)
 
-        print("🔥 Selenium loading Toshiba...")
-        driver.get(url)
+        layout.addWidget(QLabel("Thành phố"), 4, 0)
+        layout.addWidget(self.txt_city, 4, 1)
 
-        sleep(5)
+        layout.addWidget(QLabel("Người liên hệ"), 5, 0)
+        layout.addWidget(self.txt_contact, 5, 1)
 
-        html = driver.page_source
-        driver.quit()
+        layout.addWidget(QLabel("Điện thoại"), 6, 0)
+        layout.addWidget(self.txt_phone, 6, 1)
 
-        return html
+        btn_save = QPushButton("💾 Lưu")
+        btn_save.clicked.connect(self.save_data)
+        layout.addWidget(btn_save, 7, 1)
+
+        self.setLayout(layout)
+        self.load_data()
+
+    def load_data(self):
+        data = query("SELECT * FROM danh_muc_don_vi WHERE id_donvi = 1", fetch=True)
+        if data:
+            d = data[0]
+            self.txt_code.setPlainText(d["code_don_vi"])
+            self.txt_name.setPlainText(d["name_don_vi"])
+            self.txt_address.setPlainText(d["address_don_vi"])
+            self.txt_ward.setPlainText(d["ward_don_vi"])
+            self.txt_city.setPlainText(d["city_don_vi"])
+            self.txt_contact.setPlainText(d["contact_name"])
+            self.txt_phone.setPlainText(str(d["contact_phone"]))
+
+    def save_data(self):
+        query("""
+            UPDATE danh_muc_don_vi SET
+                code_don_vi=?, name_don_vi=?, address_don_vi=?,
+                ward_don_vi=?, city_don_vi=?,
+                contact_name=?, contact_phone=?
+            WHERE id_donvi=1
+        """, (
+            self.txt_code.toPlainText(),
+            self.txt_name.toPlainText(),
+            self.txt_address.toPlainText(),
+            self.txt_ward.toPlainText(),
+            self.txt_city.toPlainText(),
+            self.txt_contact.toPlainText(),
+            self.txt_phone.toPlainText()
+        ))
+        print("✅ Đã lưu đơn vị")
+        self.accept()
 
 
 # ================= MAIN =================
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Agent V2 PRO")
+
+        self.setWindowTitle("QUẢN LÝ PHOTOCOPY")
         self.resize(1300, 750)
 
-        self.workers = []
-
         self.init_ui()
-        self.load_data()
+
+        sys.stdout = LogStream(self.log_box)
+
+        self.load_unit_info()
+        self.load_machines()
+
+        threading.Thread(target=run_counter_once, daemon=True).start()
 
     # ================= UI =================
     def init_ui(self):
         main = QWidget()
-        main_layout = QHBoxLayout()
-
-        sidebar = QVBoxLayout()
-        sidebar.addWidget(QLabel("🖨️ Agent V2"))
-
-        sidebar.addWidget(QPushButton("🏠 Tổng quan"))
-        sidebar.addWidget(QPushButton("🖨️ Máy"))
-        sidebar.addWidget(QPushButton("🏢 Đơn vị"))
-
-        btn_method = QPushButton("⚙️ Method")
-        btn_method.clicked.connect(self.open_method)
-        sidebar.addWidget(btn_method)
-
-        sidebar.addStretch()
-
-        content = QVBoxLayout()
-
-        self.header = QLabel("📊 Dashboard máy")
-        self.header.setStyleSheet("font-size:20px;font-weight:bold;")
-        content.addWidget(self.header)
-
-        # ===== TABLE =====
-        self.table = QTableWidget()
-        self.table.setColumnCount(8)
-        self.table.setHorizontalHeaderLabels([
-            "Code", "Name", "IP",
-            "Status", "Counter",
-            "URL", "RAW", "Action"
-        ])
-
-        self.table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.table.setSelectionMode(QTableWidget.SingleSelection)
-        self.table.itemSelectionChanged.connect(self.on_select)
-
-        content.addWidget(self.table)
-
-        self.detail = QLabel("Chọn máy")
-        content.addWidget(self.detail)
-
-        # ===== BUTTON =====
-        btn_add = QPushButton("➕ Thêm máy")
-        btn_add.clicked.connect(self.add_machine)
-
-        self.btn_edit = QPushButton("✏️ Sửa")
-        self.btn_delete = QPushButton("🗑️ Xóa")
-
-        self.btn_edit.clicked.connect(self.edit_machine)
-        self.btn_delete.clicked.connect(self.delete_machine)
-
-        btn_reload = QPushButton("🔄 Reload")
-        btn_reload.clicked.connect(self.load_data)
-
-        self.btn_edit.setEnabled(False)
-        self.btn_delete.setEnabled(False)
-
-        btn_layout = QHBoxLayout()
-        btn_layout.addWidget(btn_add)
-        btn_layout.addWidget(self.btn_edit)
-        btn_layout.addWidget(self.btn_delete)
-        btn_layout.addWidget(btn_reload)
-
-        content.addLayout(btn_layout)
-
-        main_layout.addLayout(sidebar, 1)
-        main_layout.addLayout(content, 5)
-
-        main.setLayout(main_layout)
         self.setCentralWidget(main)
 
-    # ================= LOAD =================
-    def load_data(self):
-        machines = query("SELECT * FROM machine", fetch=True) or []
-        self.table.setRowCount(len(machines))
+        main.setStyleSheet("""
+            QMainWindow { background:#f5f6fa; }
+            QLabel { font-size:13px; }
+            QTableWidget { background:white; border:1px solid #ccc; }
+            QHeaderView::section {
+                background:#e9edf5;
+                padding:6px;
+                border:1px solid #ddd;
+                font-weight:bold;
+            }
+            QPushButton {
+                background:#e0e0e0;
+                border:1px solid #888;
+                padding:6px 12px;
+                border-radius:4px;
+            }
+            QPushButton:hover { background:#d0d0d0; }
+        """)
+
+        layout = QVBoxLayout()
+
+        # HEADER
+        header = QHBoxLayout()
+        title = QLabel("QUẢN LÝ PHOTOCOPY")
+        title.setFont(QFont("Arial", 18, QFont.Bold))
+        title.setStyleSheet("color:#2b3a8a;")
+
+        header.addWidget(title)
+        header.addStretch()
+
+        self.btn_donvi = QPushButton("ĐƠN VỊ")
+        self.btn_method = QPushButton("METHOD")
+        self.btn_counter = QPushButton("COUNTER")
+        self.btn_exit = QPushButton("THOÁT")
+
+        for b in [self.btn_donvi, self.btn_method, self.btn_counter, self.btn_exit]:
+            header.addWidget(b)
+
+        self.btn_exit.clicked.connect(self.close)
+        self.btn_donvi.clicked.connect(self.open_unit_dialog)
+
+        layout.addLayout(header)
+
+        # ===== UNIT DASHBOARD =====
+        unit_box = QWidget()
+        unit_box.setStyleSheet("""
+            background:white;
+            border:1px solid #ddd;
+            border-radius:6px;
+            padding:10px;
+        """)
+
+        unit_layout = QGridLayout()
+        unit_layout.setHorizontalSpacing(40)
+
+        self.lb_line1_left = QLabel("")
+        self.lb_line1_right = QLabel("")
+        self.lb_line2_left = QLabel("")
+        self.lb_line2_right = QLabel("")
+
+        unit_layout.addWidget(self.lb_line1_left, 0, 0)
+        unit_layout.addWidget(self.lb_line1_right, 0, 1)
+        unit_layout.addWidget(self.lb_line2_left, 1, 0)
+        unit_layout.addWidget(self.lb_line2_right, 1, 1)
+
+        unit_layout.setColumnStretch(0, 1)
+        unit_layout.setColumnStretch(1, 1)
+
+        unit_box.setLayout(unit_layout)
+        layout.addWidget(unit_box)
+
+        # BODY
+        body = QHBoxLayout()
+
+        # LEFT
+        self.table_machine = self.create_machine_table()
+        body.addWidget(self.wrap_card(self.table_machine), 1)
+
+        # RIGHT
+        right_layout = QVBoxLayout()
+
+        self.table_log = self.create_log_table()
+        right_layout.addWidget(self.wrap_card(self.table_log))
+
+        self.log_box = QTextEdit()
+        self.log_box.setMaximumHeight(120)
+        right_layout.addWidget(self.wrap_card(self.log_box))
+
+        self.label_total = QLabel("Total: 0 | B/W: 0 | Color: 0")
+        right_layout.addWidget(self.label_total)
+
+        body.addLayout(right_layout, 1)
+
+        layout.addLayout(body)
+        main.setLayout(layout)
+
+    # ===== WRAP CARD =====
+    def wrap_card(self, widget):
+        box = QWidget()
+        box.setStyleSheet("""
+            background:white;
+            border:1px solid #ddd;
+            border-radius:6px;
+        """)
+        lay = QVBoxLayout()
+        lay.setContentsMargins(8, 8, 8, 8)
+        lay.addWidget(widget)
+        box.setLayout(lay)
+        return box
+
+    # ================= UNIT =================
+    def load_unit_info(self):
+        data = query("SELECT * FROM danh_muc_don_vi WHERE id_donvi=1", fetch=True)
+        if not data:
+            return
+
+        d = data[0]
+
+        self.lb_line1_left.setText(f"MS Đơn Vị : {d['code_don_vi']}")
+        self.lb_line1_right.setText(f"Tên Đơn Vị : {d['name_don_vi']}")
+
+        contact = f"{d['contact_name']} - {d['contact_phone']}"
+        self.lb_line2_left.setText(f"Liên Hệ : {contact}")
+
+        addr = f"{d['address_don_vi']} - {d['ward_don_vi']} - {d['city_don_vi']}"
+        self.lb_line2_right.setText(f"Địa Chỉ : {addr}")
+
+    def open_unit_dialog(self):
+        dlg = UnitDialog(self)
+        if dlg.exec():
+            self.load_unit_info()
+
+    # ================= MACHINE =================
+    def create_machine_table(self):
+        table = QTableWidget()
+        table.setColumnCount(7)
+        table.setHorizontalHeaderLabels(["Mã", "Tên", "IP", "Online", "Xem", "RAW", "ON/OFF"])
+
+        header = table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(6, QHeaderView.ResizeToContents)
+
+        table.cellClicked.connect(self.on_machine_selected)
+        return table
+
+    def create_log_table(self):
+        table = QTableWidget()
+        table.setColumnCount(6)
+        table.setHorizontalHeaderLabels(["Time", "Total", "B/W", "Color", "Copy", "Scan"])
+        table.horizontalHeader().setStretchLastSection(True)
+        return table
+
+    def load_machines(self):
+        machines = query("SELECT * FROM machine", fetch=True)
+        self.table_machine.setRowCount(len(machines))
 
         for row, m in enumerate(machines):
-            code = m[2]
-            name = m[3]
-            ip = m[5]
-            url = m[6]
-            raw = m[13] or ""
+            code = m["code_machine"]
+            ip = m["ip_machine"]
+            path = m["path_machine"]
 
-            self.table.setItem(row, 0, QTableWidgetItem(code))
-            self.table.setItem(row, 1, QTableWidgetItem(name))
-            self.table.setItem(row, 2, QTableWidgetItem(ip))
+            self.table_machine.setItem(row, 0, QTableWidgetItem(code))
+            self.table_machine.setItem(row, 1, QTableWidgetItem(m["name_machine"]))
+            self.table_machine.setItem(row, 2, QTableWidgetItem(ip))
 
-            # STATUS
-            status = "🟢 Online" if self.check_online(ip) else "🔴 Offline"
-            self.table.setItem(row, 3, QTableWidgetItem(status))
+            online = self.check_online(ip)
+            self.table_machine.setItem(row, 3, QTableWidgetItem("🟢" if online else "🔴"))
 
-            self.table.setItem(row, 4, QTableWidgetItem("..."))
+            btn = QPushButton("Xem")
+            btn.clicked.connect(lambda _, u=f"http://{ip}{path}": webbrowser.open(u))
+            self.table_machine.setCellWidget(row, 4, btn)
 
-            # URL
-            full_url = f"http://{ip}{url}"
-            btn_url = QPushButton("🌐")
-            btn_url.clicked.connect(lambda _, u=full_url: self.open_url(u))
-            self.table.setCellWidget(row, 5, btn_url)
+    # ================= LOG =================
+    def on_machine_selected(self, row, col):
+        code = self.table_machine.item(row, 0).text()
+        self.load_logs(code)
 
-            # RAW
-            btn_raw = QPushButton("📄")
-            btn_raw.clicked.connect(lambda _, r=raw: self.show_raw(r))
-            self.table.setCellWidget(row, 6, btn_raw)
+    def load_logs(self, code):
+        logs = query("""
+            SELECT * FROM counter_log
+            WHERE code_machine=?
+            ORDER BY timestamp DESC
+            LIMIT 50
+        """, (code,), fetch=True)
 
-            # ACTION
-            btn_fetch = QPushButton("⚡")
-            btn_fetch.clicked.connect(lambda _, r=row: self.fetch_row(r))
-            self.table.setCellWidget(row, 7, btn_fetch)
+        self.table_log.setRowCount(len(logs))
 
-        self.btn_edit.setEnabled(False)
-        self.btn_delete.setEnabled(False)
+        total = bw = color = 0
 
-    # ================= FETCH =================
-    def fetch_row(self, row):
-        code = self.table.item(row, 0).text()
+        for r, log in enumerate(logs):
+            self.table_log.setItem(r, 0, QTableWidgetItem(log["timestamp"]))
+            self.table_log.setItem(r, 1, QTableWidgetItem(str(log["total_counter"])))
+            self.table_log.setItem(r, 2, QTableWidgetItem(str(log["bw_counter"])))
+            self.table_log.setItem(r, 3, QTableWidgetItem(str(log["color_counter"])))
+            self.table_log.setItem(r, 4, QTableWidgetItem(str(log["copy_counter"])))
+            self.table_log.setItem(r, 5, QTableWidgetItem(str(log["scan_counter"])))
 
-        machine = query(
-            "SELECT * FROM machine WHERE machine_code=?",
-            (code,),
-            fetch=True
-        )[0]
+            total += log["total_counter"]
+            bw += log["bw_counter"]
+            color += log["color_counter"]
 
-        method = query(
-            "SELECT * FROM data_method WHERE code=?",
-            (machine[12],),
-            fetch=True
-        )[0]
+        self.label_total.setText(f"Total: {total} | B/W: {bw} | Color: {color}")
 
-        worker = FetchWorker(machine, method)
-        self.workers.append(worker)
-
-        worker.finished.connect(
-            lambda result, r=row, w=worker: self.update_row(result, r, w)
-        )
-
-        worker.start()
-
-    def update_row(self, result, row, worker):
-        code = self.table.item(row, 0).text()
-
-        machine = query(
-            "SELECT * FROM machine WHERE machine_code=?",
-            (code,),
-            fetch=True
-        )[0]
-
-        if result["status"] != "OK":
-            self.table.setItem(row, 4, QTableWidgetItem("❌ Error"))
-        else:
-            c = result["counter"]
-
-            text = f"T:{c.get('total',0)} | BW:{c.get('bw',0)}"
-            self.table.setItem(row, 4, QTableWidgetItem(text))
-
-            # SAVE DB
-            query(
-                "UPDATE machine SET raw_data=? WHERE id=?",
-                (result["raw"], machine[0])
-            )
-
-            query("""
-            INSERT INTO counter_log (
-                machine_id, timestamp,
-                total, bw, color,
-                copy, printer, scan, raw
-            ) VALUES (?, datetime('now'), ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                machine[0],
-                c.get("total", 0),
-                c.get("bw", 0),
-                c.get("color", 0),
-                c.get("copy", 0),
-                c.get("printer", 0),
-                c.get("scan", 0),
-                result["raw"]
-            ))
-
-        if worker in self.workers:
-            self.workers.remove(worker)
-
-        worker.quit()
-        worker.wait()
-
-    # ================= UTIL =================
+    # ================= UTILS =================
     def check_online(self, ip):
         try:
-            requests.get(f"http://{ip}", timeout=2)
+            socket.create_connection((ip, 80), timeout=1)
             return True
         except:
             return False
-
-    def open_url(self, url):
-        webbrowser.open(url)
-
-    def show_raw(self, raw):
-        dialog = QDialog(self)
-        layout = QVBoxLayout()
-
-        text = QTextEdit()
-        text.setPlainText(raw or "No data")
-
-        layout.addWidget(text)
-
-        dialog.setLayout(layout)
-        dialog.resize(700, 500)
-        dialog.exec()
-
-    def open_method(self):
-        dialog = MethodWindow()
-        dialog.exec()
-
-    def on_select(self):
-        self.btn_edit.setEnabled(True)
-        self.btn_delete.setEnabled(True)
-
-    def get_selected_machine(self):
-        row = self.table.currentRow()
-        if row == -1:
-            return None
-
-        code = self.table.item(row, 0).text()
-        data = query(
-            "SELECT * FROM machine WHERE machine_code=?",
-            (code,),
-            fetch=True
-        )
-        return data[0] if data else None
-
-    # ================= CRUD =================
-    def add_machine(self):
-        dialog = QDialog(self)
-        layout = QVBoxLayout()
-
-        code = QLineEdit()
-        name = QLineEdit()
-        serial = QLineEdit()
-        ip = QLineEdit()
-        location = QLineEdit()
-
-        method = QComboBox()
-        methods = query("SELECT code FROM data_method", fetch=True)
-        for m in methods:
-            method.addItem(m[0])
-
-        url = QLineEdit()
-
-        for label, widget in [
-            ("Code", code), ("Name", name), ("Serial", serial),
-            ("IP", ip), ("Location", location),
-            ("Method", method), ("URL", url)
-        ]:
-            layout.addWidget(QLabel(label))
-            layout.addWidget(widget)
-
-        btn = QPushButton("Lưu")
-
-        def save():
-            query("""
-            INSERT INTO machine (
-                org_id, machine_code, name, serial, ip,
-                data_url, storage_code, max_days, times_per_day, note,
-                location, method_code, raw_data
-            ) VALUES (1, ?, ?, ?, ?, ?, 'RICOH', 30, 3, '',
-                      ?, ?, '')
-            """, (
-                code.text(),
-                name.text(),
-                serial.text(),
-                ip.text(),
-                url.text(),
-                location.text(),
-                method.currentText()
-            ))
-
-            dialog.accept()
-            self.load_data()
-
-        btn.clicked.connect(save)
-        layout.addWidget(btn)
-
-        dialog.setLayout(layout)
-        dialog.exec()
-
-    def edit_machine(self):
-        m = self.get_selected_machine()
-        if not m:
-            return
-
-        dialog = QDialog(self)
-        layout = QVBoxLayout()
-
-        code = QLineEdit(m[2])
-        name = QLineEdit(m[3])
-        serial = QLineEdit(m[4])
-        ip = QLineEdit(m[5])
-        location = QLineEdit(m[11] or "")
-
-        method = QComboBox()
-        methods = query("SELECT code FROM data_method", fetch=True)
-        for mm in methods:
-            method.addItem(mm[0])
-        method.setCurrentText(m[12] or "")
-
-        url = QLineEdit(m[6] or "")
-
-        for label, widget in [
-            ("Code", code), ("Name", name), ("Serial", serial),
-            ("IP", ip), ("Location", location),
-            ("Method", method), ("URL", url)
-        ]:
-            layout.addWidget(QLabel(label))
-            layout.addWidget(widget)
-
-        btn = QPushButton("Update")
-
-        def save():
-            query("""
-            UPDATE machine SET
-                machine_code=?, name=?, serial=?, ip=?,
-                location=?, method_code=?, data_url=?
-            WHERE id=?
-            """, (
-                code.text(),
-                name.text(),
-                serial.text(),
-                ip.text(),
-                location.text(),
-                method.currentText(),
-                url.text(),
-                m[0]
-            ))
-
-            dialog.accept()
-            self.load_data()
-
-        btn.clicked.connect(save)
-        layout.addWidget(btn)
-
-        dialog.setLayout(layout)
-        dialog.exec()
-
-    def delete_machine(self):
-        m = self.get_selected_machine()
-        if not m:
-            return
-
-        if QMessageBox.question(self, "Xóa", f"Xóa {m[2]}?") == QMessageBox.Yes:
-            query("DELETE FROM machine WHERE id=?", (m[0],))
-            self.load_data()

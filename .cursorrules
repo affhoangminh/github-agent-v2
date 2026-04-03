@@ -1,0 +1,61 @@
+PROJECT: Photocopy Machine Agent (Python + PySide6)
+
+ARCHITECTURE:
+- core → xử lý logic, parser, fetch
+- services → điều phối business logic
+- database → truy vấn SQLite
+- ui → giao diện (PySide6)
+- utils → helper
+
+STRICT RULES:
+
+1. LAYER SEPARATION
+- UI không được chứa business logic
+- Parser không được gọi database
+- Service là nơi duy nhất điều phối
+
+2. PARSER
+- Mỗi hãng = 1 parser riêng
+- Parser chỉ return dict:
+  {
+    "total": int,
+    "bw": int,
+    "color": int
+  }
+
+3. DATABASE
+- Không dùng index (machine[5])
+- Phải dùng key (machine["ip"])
+- Dùng sqlite Row factory
+
+4. FETCH
+- Tách riêng HTTP / Selenium
+- Không viết request trực tiếp trong parser
+
+5. ERROR HANDLING
+- Không dùng bare except
+- Phải log lỗi
+
+6. NAMING
+- snake_case cho function
+- PascalCase cho class
+
+7. LIMIT
+- Function < 50 dòng
+- Không duplicate logic
+
+8. DO NOT:
+- Không sửa cấu trúc folder
+- Không hardcode IP
+- Không viết logic trong UI
+- Không tạo parser trùng
+
+9. ALWAYS:
+- Reuse code
+- Viết code rõ ràng
+- Logging khi cần debug
+
+OUTPUT:
+- Code sạch
+- Không giải thích dài
+- Chỉ trả file cần sửa
