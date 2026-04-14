@@ -12,8 +12,6 @@ def get_value(soup, element_id):
 
 
 def parse(html):
-    print("🔥 PARSER TOSHIBA 3518")
-
     soup = BeautifulSoup(html, "lxml")
 
     total = get_value(soup, "Print_Total_TotalCounter_Total")
@@ -31,6 +29,5 @@ def parse(html):
         "scan": scan,
     }
 
-    print("👉 Toshiba result:", result)
 
     return result

@@ -14,6 +14,7 @@ import socket
 
 from database.db import query
 from core.counter_engine import run_counter_once
+from core.logger import logger
 from ui.method_window import MethodWindow
 
 
@@ -104,7 +105,7 @@ class UnitDialog(QDialog):
             self.txt_contact.toPlainText(),
             self.txt_phone.toPlainText()
         ))
-        print("✅ Đã lưu đơn vị")
+        logger.info("✅ Đã lưu đơn vị")
         self.accept()
 
 
@@ -384,5 +385,6 @@ class MainWindow(QMainWindow):
         try:
             socket.create_connection((ip, 80), timeout=1)
             return True
-        except:
+        except Exception as e:
+            # Không cần log error ở đây vì nó chạy liên tục trong table
             return False

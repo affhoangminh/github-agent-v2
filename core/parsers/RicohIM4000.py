@@ -13,8 +13,6 @@ def extract_td_numbers(block):
 
 
 def parse(raw):
-    print("🔥 RUN PARSER RICOH IM4000")
-
     result = {
         "total": 0,
         "bw": 0,
