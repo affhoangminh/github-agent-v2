@@ -1,9 +1,0 @@
-2026-04-14 15:19:43,496 - AgentV3 - INFO - ✅ Database exists
-2026-04-14 15:19:47,267 - AgentV3 - INFO - Bắt đầu chạy counter cho 3 máy
-2026-04-14 15:19:47,267 - AgentV3 - INFO - Bắt đầu chạy counter cho 3 máy
-2026-04-14 15:19:57,285 - AgentV3 - ERROR - Requests error at http://192.168.0.182/web/guest/en/websys/status/getUnificationCounter.cgi: HTTPConnectionPool(host='192.168.0.182', port=80): Max retries exceeded with url: /web/guest/en/websys/status/getUnificationCounter.cgi (Caused by ConnectTimeoutError(<HTTPConnection(host='192.168.0.182', port=80) at 0x2274c574440>, 'Connection to 192.168.0.182 timed out. (connect timeout=10)'))
-2026-04-14 15:19:57,286 - AgentV3 - ERROR - Requests error at http://192.168.0.182/web/guest/en/websys/status/getUnificationCounter.cgi: HTTPConnectionPool(host='192.168.0.182', port=80): Max retries exceeded with url: /web/guest/en/websys/status/getUnificationCounter.cgi (Caused by ConnectTimeoutError(<HTTPConnection(host='192.168.0.182', port=80) at 0x2274c50b610>, 'Connection to 192.168.0.182 timed out. (connect timeout=10)'))
-2026-04-14 15:20:07,295 - AgentV3 - ERROR - Requests error at http://192.168.0.181/Counters/Counter.html: HTTPConnectionPool(host='192.168.0.181', port=80): Max retries exceeded with url: /Counters/Counter.html (Caused by ConnectTimeoutError(<HTTPConnection(host='192.168.0.181', port=80) at 0x2274c50bed0>, 'Connection to 192.168.0.181 timed out. (connect timeout=10)'))
-2026-04-14 15:20:07,295 - AgentV3 - ERROR - Requests error at http://192.168.0.181/Counters/Counter.html: HTTPConnectionPool(host='192.168.0.181', port=80): Max retries exceeded with url: /Counters/Counter.html (Caused by ConnectTimeoutError(<HTTPConnection(host='192.168.0.181', port=80) at 0x2274c5162c0>, 'Connection to 192.168.0.181 timed out. (connect timeout=10)'))
-2026-04-14 15:20:10,463 - AgentV3 - INFO - Đã lưu counter cho máy: T002
-2026-04-14 15:20:10,468 - AgentV3 - INFO - Đã lưu counter cho máy: T002
