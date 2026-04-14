@@ -2,6 +2,7 @@ import sys
 import os
 
 from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import QTimer  # dùng để delay
 
 from database.init_db import init_db
 from database.db import query
@@ -95,8 +96,6 @@ def main():
         print("⚙️ First run → init database")
         init_db()
         seed_data()
-    # else:
-    #    print("✅ Database exists")
 
     # ===== RUN UI =====
     app = QApplication(sys.argv)
@@ -104,8 +103,8 @@ def main():
     window = MainWindow()
     window.show()
 
-    # chạy test 1 lần lấy counter
-    run_counter_once()
+    # ✅ delay 5 giây rồi mới chạy counter (không block UI)
+    QTimer.singleShot(5000, run_counter_once)
 
     sys.exit(app.exec())
 

@@ -1,5 +1,6 @@
 import requests
 import importlib
+import socket
 from datetime import datetime
 
 from database.db import query
@@ -16,7 +17,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 def fetch_requests(url):
     try:
         headers = {"User-Agent": "Mozilla/5.0"}
-        res = requests.get(url, headers=headers, timeout=10)
+        res = requests.get(url, headers=headers, timeout=3)
 
         if res.status_code != 200:
             print("❌ HTTP ERROR:", res.status_code)
@@ -66,6 +67,14 @@ def process_machine(machine):
 
         code_machine = machine["code_machine"]
         ip = machine["ip_machine"]
+
+        # =========================
+        # CHECK IP TRƯỚC KHI GỌI HTTP
+        # =========================
+        if not is_ip_alive(ip):
+            print(f"⚠️ IP {ip} không phản hồi → SKIP")
+            return None
+
         path = machine["path_machine"]
         code_method = machine["code_method"]
 
@@ -172,3 +181,14 @@ def run_counter_once():
 
     for machine in machines:
         process_machine(machine)
+
+# ==============================
+# check IP alive
+# ==============================    
+def is_ip_alive(ip, port=80, timeout=1):
+    try:
+        sock = socket.create_connection((ip, port), timeout=timeout)
+        sock.close()
+        return True
+    except Exception:
+        return False

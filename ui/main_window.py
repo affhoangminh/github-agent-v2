@@ -2,7 +2,8 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QLabel, QPushButton,
     QVBoxLayout, QHBoxLayout, QGridLayout,
     QTableWidget, QTableWidgetItem,
-    QTextEdit, QDialog, QHeaderView
+    QTextEdit, QDialog, QHeaderView,
+    QMessageBox   
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
@@ -118,12 +119,15 @@ class MainWindow(QMainWindow):
 
         self.init_ui()
 
+        # ✅ clear log khi khởi động
+        self.log_box.clear()
+
         sys.stdout = LogStream(self.log_box)
 
         self.load_unit_info()
         self.load_machines()
 
-        threading.Thread(target=run_counter_once, daemon=True).start()
+        # xoa threading.Thread(target=run_counter_once, daemon=True).start()
 
     # ================= UI =================
     def init_ui(self):
@@ -212,15 +216,42 @@ class MainWindow(QMainWindow):
         self.table_machine = self.create_machine_table()
         body.addWidget(self.wrap_card(self.table_machine), 1)
 
-        # RIGHT
+        # ===== RIGHT =====
+        from PySide6.QtWidgets import QSplitter
+        from PySide6.QtCore import Qt
+
         right_layout = QVBoxLayout()
 
-        self.table_log = self.create_log_table()
-        right_layout.addWidget(self.wrap_card(self.table_log))
+        # Table log
+        self.table_log = self.create_log_table() # tạo table log
+        self.table_log.keyPressEvent = self.log_table_keypress # bắt sự kiện phím để xóa log
 
+        # Log box
         self.log_box = QTextEdit()
         self.log_box.setMaximumHeight(120)
-        right_layout.addWidget(self.wrap_card(self.log_box))
+
+        # 👉 Wrap lại (giữ style card cũ)
+        log_table_widget = self.wrap_card(self.table_log)
+        log_box_widget = self.wrap_card(self.log_box)
+
+        # 👉 Splitter (kéo được)
+        splitter = QSplitter(Qt.Vertical)
+        splitter.addWidget(log_table_widget)
+        splitter.addWidget(log_box_widget)
+
+        # 👉 Tỷ lệ hiển thị (table lớn hơn)
+        splitter.setStretchFactor(0, 4)
+        splitter.setStretchFactor(1, 1)
+
+        # 👉 Size ban đầu
+        splitter.setSizes([500, 120])
+
+        # 👉 (OPTIONAL) thanh kéo đẹp hơn
+        splitter.setHandleWidth(6)
+
+        right_layout.addWidget(splitter)
+
+        ########### HIEN THI COUNTER TONG #############
 
         self.label_total = QLabel("Total: 0 | B/W: 0 | Color: 0")
         right_layout.addWidget(self.label_total)
@@ -294,11 +325,24 @@ class MainWindow(QMainWindow):
         header = table.horizontalHeader()
 
         # ✅ Cho resize tự do
+        header = table.horizontalHeader()
+
+        # 👉 Cho resize tự do toàn bộ
         header.setSectionResizeMode(QHeaderView.Interactive)
 
-        # ✅ Cột Tên giãn mạnh (rất quan trọng)
-        header.setSectionResizeMode(1, QHeaderView.Stretch)
+        # 👉 Cột nhỏ → fit nội dung
+        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)  # Mã
+        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)  # Tên máy
+        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)  # IP
+        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)  # Online
+        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)  # Xem
+        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)  # Vị trí
+        header.setSectionResizeMode(6, QHeaderView.ResizeToContents)  # Counter
 
+        # 👉 Cột quan trọng → rộng mặc định + vẫn resize được
+        #header.resizeSection(1, 250)  # Tên máy
+        #header.resizeSection(5, 220)  # Vị trí
+    
         table.setSelectionBehavior(QTableWidget.SelectRows)
         table.setEditTriggers(QTableWidget.NoEditTriggers)
 
@@ -307,11 +351,38 @@ class MainWindow(QMainWindow):
 
         return table
 
+    # ================= LOG =================
+
     def create_log_table(self):
         table = QTableWidget()
-        table.setColumnCount(6)
-        table.setHorizontalHeaderLabels(["Time", "Total", "B/W", "Color", "Copy", "Scan"])
-        table.horizontalHeader().setStretchLastSection(True)
+        table.setColumnCount(7)
+
+        table.setHorizontalHeaderLabels([
+            "Time", "Total", "B/W",
+            "Color", "Copy", "Scan",
+            "RAW"
+        ])
+
+        header = table.horizontalHeader()
+
+        # 👉 Cho resize tự do
+        header.setSectionResizeMode(QHeaderView.Interactive)
+
+        # 👉 Cột nhỏ auto fit
+        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(6, QHeaderView.ResizeToContents)
+
+        # 👉 Time rộng hơn
+        header.resizeSection(0, 140)
+
+        # 👉 Cho phép chọn nhieu dòng
+        table.setSelectionMode(QTableWidget.ExtendedSelection)  # chọn nhiều dòng
+        table.setSelectionBehavior(QTableWidget.SelectRows)
+
         return table
 
     def load_machines(self):
@@ -370,19 +441,53 @@ class MainWindow(QMainWindow):
 
         total = bw = color = 0
 
+        from datetime import datetime
+
         for r, log in enumerate(logs):
-            self.table_log.setItem(r, 0, QTableWidgetItem(log["timestamp"]))
+            # ===== FORMAT TIME =====
+            try:
+                dt = datetime.fromisoformat(log["timestamp"])
+                time_str = dt.strftime("%d/%m/%y %H:%M")
+            except:
+                time_str = log["timestamp"]
+
+            item_time = QTableWidgetItem(time_str)
+            item_time.setData(Qt.UserRole, log["timestamp"])  # 👈 lưu timestamp gốc
+            self.table_log.setItem(r, 0, item_time)
+
             self.table_log.setItem(r, 1, QTableWidgetItem(str(log["total_counter"])))
             self.table_log.setItem(r, 2, QTableWidgetItem(str(log["bw_counter"])))
             self.table_log.setItem(r, 3, QTableWidgetItem(str(log["color_counter"])))
             self.table_log.setItem(r, 4, QTableWidgetItem(str(log["copy_counter"])))
             self.table_log.setItem(r, 5, QTableWidgetItem(str(log["scan_counter"])))
 
+            # ===== RAW BUTTON =====
+            raw_data = log.get("raw_counter", "")
+
+            widget = QWidget()
+            lay = QHBoxLayout()
+            lay.setContentsMargins(2, 2, 2, 2)
+
+            btn_txt = QPushButton("TXT")
+            btn_web = QPushButton("WEB")
+
+            # TXT → popup text
+            btn_txt.clicked.connect(lambda _, d=raw_data: self.show_raw_text(d))
+
+            # WEB → mở browser (nếu raw là html/url)
+            btn_web.clicked.connect(lambda _, d=raw_data: self.open_raw_web(d))
+
+            lay.addWidget(btn_txt)
+            lay.addWidget(btn_web)
+
+            widget.setLayout(lay)
+
+            self.table_log.setCellWidget(r, 6, widget)
+
+            # ===== TOTAL =====
             total += log["total_counter"]
             bw += log["bw_counter"]
             color += log["color_counter"]
-
-        self.label_total.setText(f"Total: {total} | B/W: {bw} | Color: {color}")
 
     # ================= UTILS =================
     def check_online(self, ip):
@@ -391,3 +496,83 @@ class MainWindow(QMainWindow):
             return True
         except:
             return False
+        
+    # =================== Hien thi RAW DANG TEXT=================
+    def show_raw_text(self, raw):
+        dlg = QDialog(self)
+        dlg.setWindowTitle("RAW TEXT")
+        dlg.resize(800, 600)
+
+        layout = QVBoxLayout()
+        txt = QTextEdit()
+        txt.setPlainText(str(raw) if raw else "Không có dữ liệu")
+        layout.addWidget(txt)
+
+        dlg.setLayout(layout)
+        dlg.exec()
+
+    # =================== Hien thi RAW DANG WEB (HTML/URL) =================
+    def open_raw_web(self, raw):
+        if not raw:
+            return
+
+        import tempfile
+        import os
+
+        # 👉 Ghi HTML ra file tạm
+        tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".html", mode="w", encoding="utf-8")
+        tmp_file.write(raw)
+        tmp_file.close()
+
+        # 👉 Mở bằng browser
+        webbrowser.open(f"file:///{tmp_file.name}")
+
+    # =================== nhấn delete log ===================
+    def log_table_keypress(self, event):
+        if event.key() == Qt.Key_Delete:
+            self.delete_selected_logs()
+        else:
+            QTableWidget.keyPressEvent(self.table_log, event)
+
+    # =================== Xóa log đã chọn ===================
+    def delete_selected_logs(self):
+        selected_rows = set()
+
+        for item in self.table_log.selectedItems():
+            selected_rows.add(item.row())
+
+        if not selected_rows:
+            return
+
+        # 👉 confirm
+        reply = QMessageBox.question(
+            self,
+            "Xác nhận xóa",
+            f"Bạn có chắc muốn xóa {len(selected_rows)} dòng đã chọn?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+
+        if reply != QMessageBox.Yes:
+            return
+
+        # 👉 lấy code_machine hiện tại
+        current_row = self.table_machine.currentRow()
+        if current_row == -1:
+            return
+
+        code_machine = self.table_machine.item(current_row, 0).text()
+
+        # 👉 xóa theo timestamp (giả sử unique)
+        for row in selected_rows:
+            timestamp = self.table_log.item(row, 0).data(Qt.UserRole)
+
+            # ⚠ convert lại format nếu cần
+            query("""
+                DELETE FROM counter_log
+                WHERE code_machine=? AND timestamp=?
+            """, (code_machine, timestamp))
+
+        # reload lại
+        self.load_logs(code_machine)
+
+        print(f"🗑️ Đã xóa {len(selected_rows)} dòng log")   
