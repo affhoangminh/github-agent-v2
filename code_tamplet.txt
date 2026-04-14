@@ -1,0 +1,7 @@
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+
+# Tạo venv
+python -m venv venv
+
+# Kích hoạt venv
+.\venv\Scripts\Activate.ps1

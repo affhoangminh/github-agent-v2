@@ -1,0 +1,19 @@
+__pycache__/
+*.pyc
+
+# Môi trường ảo
+venv/
+ENV/
+env/
+
+# Cấu hình IDE
+.vscode/
+.idea/
+
+# File nhật ký và dữ liệu tạm
+*.log
+db.sqlite3
+.DS_Store
+
+# Biến môi trường
+.env
