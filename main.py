@@ -14,102 +14,51 @@ from PySide6.QtCore import QTimer
 from database.init_db import init_db
 from database.db import query
 from ui.main_window import MainWindow
-from core.counter_engine import run_counter_once
+from core.counter_engine import run_counter_once, load_unit_config, cleanup_old_logs
 
 
 DB_PATH = "data/agent.db"
 
 
-# ================= RESET DB =================
-def reset_db():
-    if os.path.exists(DB_PATH):
-        os.remove(DB_PATH)
-        logger.info("Deleted old database")
-
-    init_db()
-    logger.info("Database reset complete")
-
-
-# ================= SEED DATA =================
-def seed_data():
-    # ===== ĐƠN VỊ =====
-    query("""
-    INSERT INTO danh_muc_don_vi (
-        code_don_vi, name_don_vi, address_don_vi,
-        contact_name, contact_phone,
-        ward_don_vi, city_don_vi,
-        license, hardware_id, id_donvi
-    )
-    VALUES (
-        'DV001',
-        'Công ty Demo',
-        'Thái Nguyên',
-        'Admin',
-        '0123456789',
-        'Phường A',
-        'Thái Nguyên',
-        'LIC001',
-        'HW001',
-        1
-    )
-    """)
-
-    # ===== METHOD =====
-    query("""
-    INSERT INTO danh_muc_method (
-        code_method, name_method, path_method,
-        parser_method, counter_method
-    )
-    VALUES
-    ('R001', 'Ricoh IM Series',
-     '/web/guest/en/websys/status/getUnificationCounter.cgi',
-     'requests', 'RicohIM4000'),
-
-    ('T001', 'Toshiba E Series',
-     '/Counters/Counter.html',
-     'requests', 'ToshibaE')
-    """)
-
-    # ===== MACHINE =====
-    query("""
-    INSERT INTO machine (
-        code_machine, name_machine, serial_machine,
-        location, note, counter_enabled,
-        ip_machine, path_machine,
-        max_days, times_per_day,
-        code_method, raw_data, code_don_vi
-    )
-    VALUES
-    ('M001', 'Ricoh IM 4000', '192.168.1.10',
-     'Phòng Kế Toán', '', 1,
-     '192.168.1.10',
-     '/web/guest/en/websys/status/getUnificationCounter.cgi',
-     30, 3, 'R001', '', 'DV001'),
-
-    ('M002', 'Toshiba E3518A', '192.168.0.181',
-     'Phòng Kinh Doanh', '', 1,
-     '192.168.0.181',
-     '/Counters/Counter.html',
-     30, 3, 'T001', '', 'DV001')
-    """)
-
-    logger.info("Seed data inserted")
-
+# ================= SCHEDULING =================
+def start_auto_timer(window):
+    """Tính toán và lập lịch chạy counter tự động."""
+    config = load_unit_config()
+    times_per_day = config.get("times_per_day", 3)
+    
+    # Công thức: 8 giờ / số lần = khoảng cách mỗi lần chạy (giờ)
+    interval_hours = 8.0 / max(1, times_per_day)
+    interval_ms = int(interval_hours * 3600 * 1000)
+    
+    logger.info("📅 Lập lịch tự động: Quét mỗi %.1f giờ (Tần suất: %d lần/8h)", interval_hours, times_per_day)
+    
+    # Tạo timer chạy lặp lại
+    timer = QTimer(window)
+    timer.timeout.connect(window.trigger_counter)
+    timer.start(interval_ms)
+    
+    # Lưu reference để không bị garbage collected
+    window._auto_timer = timer
 
 # ================= MAIN =================
 def main():
     if not os.path.exists(DB_PATH):
         logger.info("First run → initializing database")
         init_db()
-        seed_data()
 
     app = QApplication(sys.argv)
 
     window = MainWindow()
     window.show()
 
-    # Delay 5 giây rồi tự động chạy quét counter (thông qua hàm của window để hiện tiến trình)
+    # 1. Dọn dẹp log cũ ngay khi khởi động
+    cleanup_old_logs()
+
+    # 2. Chạy counter lần đầu sau 5 giây
     QTimer.singleShot(5000, window.trigger_counter)
+
+    # 3. Bắt đầu bộ lập lịch tự động
+    start_auto_timer(window)
 
     sys.exit(app.exec())
 

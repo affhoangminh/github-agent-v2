@@ -101,6 +101,21 @@ class UnitDialog(QDialog):
         group_contact.setLayout(form_contact)
         layout.addWidget(group_contact)
 
+        # --- NHÓM 3: CẤU HÌNH HỆ THỐNG ---
+        group_config = QGroupBox("⚙️ Cấu Hình Hệ Thống")
+        form_config = QFormLayout()
+        
+        self.txt_max_days = QLineEdit()
+        self.txt_max_days.setPlaceholderText("Ví dụ: 30")
+        self.txt_times = QLineEdit()
+        self.txt_times.setPlaceholderText("Số lần quét/ngày (Ví dụ: 2)")
+        
+        form_config.addRow("Số ngày lưu Log:", self.txt_max_days)
+        form_config.addRow("Tần suất quét (lần/ngày):", self.txt_times)
+        
+        group_config.setLayout(form_config)
+        layout.addWidget(group_config)
+
         layout.addStretch()
 
         # --- BUTTONS ---
@@ -145,13 +160,15 @@ class UnitDialog(QDialog):
             self.txt_city.setText(d["city_don_vi"])
             self.txt_contact.setText(d["contact_name"])
             self.txt_phone.setText(str(d["contact_phone"]))
+            self.txt_max_days.setText(str(d.get("max_days", 30)))
+            self.txt_times.setText(str(d.get("times_per_day", 3)))
 
     def save_data(self):
         query("""
             UPDATE danh_muc_don_vi SET
-                code_don_vi=?, name_don_vi=?, address_don_vi=?,
                 ward_don_vi=?, city_don_vi=?,
-                contact_name=?, contact_phone=?
+                contact_name=?, contact_phone=?,
+                max_days=?, times_per_day=?
             WHERE id_donvi=1
         """, (
             self.txt_code.text(),
@@ -160,7 +177,9 @@ class UnitDialog(QDialog):
             self.txt_ward.text(),
             self.txt_city.text(),
             self.txt_contact.text(),
-            self.txt_phone.text()
+            self.txt_phone.text(),
+            int(self.txt_max_days.text() or 30),
+            int(self.txt_times.text() or 3)
         ))
         msg = QMessageBox(self)
         msg.setWindowTitle("Thông báo")

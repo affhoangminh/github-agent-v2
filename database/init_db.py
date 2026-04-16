@@ -15,7 +15,9 @@ def init_db():
         city_don_vi TEXT,
         license TEXT,
         hardware_id TEXT,
-        id_donvi INTEGER DEFAULT 1
+        id_donvi INTEGER DEFAULT 1,
+        max_days INTEGER DEFAULT 30,
+        times_per_day INTEGER DEFAULT 3
     )
     """)
 
@@ -41,8 +43,6 @@ def init_db():
         counter_enabled INTEGER DEFAULT 1,
         ip_machine TEXT,
         path_machine TEXT,
-        max_days INTEGER,
-        times_per_day INTEGER,
         code_method TEXT,
         raw_data TEXT,
         code_don_vi TEXT
@@ -65,4 +65,4 @@ def init_db():
     )
     """)
 
-    print("✅ DB Initialized (NEW SCHEMA)")
+    print("✅ DB Initialized (v2.1 Schema)")

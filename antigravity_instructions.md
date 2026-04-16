@@ -4,46 +4,40 @@ Tài liệu này tổng hợp các quy tắc nghiêm ngặt từ `.cursorrules` 
 
 ## 1. Ngôn Ngữ Phản Hồi
 - **Luôn luôn trả lời bằng tiếng Việt.**
-- Phản hồi ngắn gọn, súc tích, đi thẳng vào vấn đề ("Không giải thích dài").
+- Phản hồi ngắn gọn, súc tích, đi thẳng vào vấn đề.
 
-## 2. Kiến Trúc Dự Án (Architecture) - Phiên bản 2.0
+## 2. Kiến Trúc Dự Án (Architecture) - Phiên bản 2.1
 Tuân thủ phân lớp chức năng:
-- `core`: Xử lý logic lõi, parser, fetch dữ liệu.
-- `database`: Thực hiện các truy vấn SQLite (Sử dụng `dict` thay vì `tuple`).
-- `ui`: Giao diện PySide6 (Tuyệt đối không chứa logic xử lý nặng).
-- `data`: Chứa database `agent.db` và các tệp nhật ký `logs`.
+- `core/engines`: Chứa các bộ tải dữ liệu (requests, selenium, v.v.). Mỗi file là một engine độc lập có hàm `fetch(url)`.
+- `core/parsers`: Chứa các bộ phân tích dữ liệu HTML cho từng dòng máy.
+- `database`: Quản lý SQLite. Sử dụng Migration khi thay đổi cấu trúc bảng.
+- `ui`: Giao diện PySide6 (Sử dụng Signal/Slot để giao tiếp giữa các luồng).
 
-## 3. Quy Tắc Lập Trình Nghiêm Ngặt (Strict Rules)
+## 3. Quy Tắc Lập Trình & Tính năng Mới (v2.1)
 
-### Phân Tách Lớp & Đa Luồng (Threading)
-- Toàn bộ các tác vụ nặng (Fetch dữ liệu, Ping IP, Selenium) **BẮT BUỘC** phải chạy trong luồng riêng (`threading.Thread`).
-- Tuyệt đối không để UI bị treo (freeze) khi đang xử lý dữ liệu.
-- Sử dụng cơ chế `Signal/Slot` của PySide6 để truyền thông tin từ Worker Thread về giao diện chính.
+### Quản lý Cấu hình tập trung
+- Các thông số `max_days` (Số ngày lưu log) và `times_per_day` (Tần suất quét) được quản lý tại bảng `danh_muc_don_vi`.
+- Không lưu các thông số này tại bảng `machine` để đảm bảo tính nhất quán toàn hệ thống.
 
-### Cơ Chế Thanh Trạng Thái (Status Bar)
-- Thay vì sử dụng hộp thoại thông báo (Popup), hệ thống sử dụng một `status_label` ở chân trang để báo cáo tiến trình.
-- Hiển thị tiến trình chi tiết: `🚀 Lấy số counter máy {Tên} - IP: {IP} (x/n)`.
-- Sử dụng màu sắc để phân biệt trạng thái: Cam (Đang chạy), Xanh lá (Hoàn tất), Trắng (Sẵn sàng).
+### Cơ chế Lập lịch tự động (Auto-Scheduling)
+- Hệ thống tự động tính toán thời gian quét dựa trên công thức: `Interval = 8 giờ / times_per_day`.
+- Sử dụng `QTimer` trong `main.py` để thực hiện việc quét định kỳ mà không làm treo UI.
+- Luôn thực hiện dọn dẹp Log cũ (`cleanup_old_logs`) ngay khi khởi động chương trình.
 
-### Parser & Fetch
-- Mỗi dòng máy có Parser riêng trong `core/parsers/`.
-- Tách riêng logic Fetch khỏi Parser.
-- Xử lý Selenium thông minh: Có cơ chế "Hard Timeout" (45s) để chống treo trình duyệt ảo.
+### Hệ thống Plugin-based (Engine & Parser)
+- Cả **Engine tải dữ liệu** và **Parser phân tích dữ liệu** đều được nạp động từ thư mục tương ứng (`core/engines/` và `core/parsers/`).
+- Tên gọi trong database được xử lý **không phân biệt chữ hoa/thường** và tự động loại bỏ khoảng trắng.
+- Tất cả các file trong các thư mục này BẮT BUỘC phải đặt tên bằng **chữ thường (lowercase)** để đảm bảo tính tương thích trên mọi hệ điều hành.
 
-## 4. Cơ Chế Vận Hành & Mở Rộng (Plug-and-Play)
-Hệ thống được thiết kế để thêm máy mới mà không cần sửa đổi code lõi:
-- **Tự động hóa Log**: Tự động xóa file `.log` cũ hơn 30 ngày.
-- **Thêm máy mới**:
-    1. Tạo file parser mới tại `core/parsers/{Counter_Method}.py`.
-    2. Khai báo trong bảng `danh_muc_method`.
-    3. Thêm máy vào bảng `machine`.
-- **Quét IP bất đồng bộ**: Khi tải danh sách máy, việc kiểm tra Online/Offline được thực hiện ngầm, không làm treo giao diện.
+### Cơ chế Thử lại (Retry Mechanism)
+- Khi việc lấy counter thất bại, hệ thống tự động chờ **10 giây** trước khi thử lại.
+- Số lần thử lại tối đa là **3 lần**.
 
-## 5. Cập nhật Phiên bản 2.0
-- **UI**: Loại bỏ khung Log rườm rà, thay bằng Thanh trạng thái hiện đại.
-- **Hiệu suất**: Quét IP bất đồng bộ, cập nhật icon Online ngay khi có kết quả.
-- **Ổn định**: Khắc phục lỗi kẹt nút COUNTER bằng cơ chế Signal tập trung.
+## 4. Cơ Chế Mở Rộng
+- **Thêm Engine mới**: Tạo file tại `core/engines/{name}.py` với hàm `fetch(url)`.
+- **Thêm Parser mới**: Tạo file tại `core/parsers/{name}.py` với hàm `parse(html)`.
+- Các ComboBox trong giao diện cấu hình được thiết kế để tự động nhận diện các file mới này.
 
 ---
 > [!IMPORTANT]
-> Antigravity sẽ tự động áp dụng các quy tắc này cho mọi yêu cầu tiếp theo mà không cần nhắc lại.
+> Mọi thay đổi về Database phải đi kèm với cập nhật trong `database/init_db.py` và kịch bản Migration nếu đang có dữ liệu người dùng.
