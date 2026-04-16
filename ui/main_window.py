@@ -3,32 +3,22 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QGridLayout,
     QTableWidget, QTableWidgetItem,
     QTextEdit, QDialog, QHeaderView,
-    QMessageBox   
+    QMessageBox, QLineEdit, QFormLayout, QGroupBox,
+    QSpacerItem, QSizePolicy
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal, QObject, QTimer, QCoreApplication
 from PySide6.QtGui import QFont
 
+import logging
 import threading
 import sys
 import webbrowser
-import socket
 
 from database.db import query
-from core.counter_engine import run_counter_once
+from core.counter_engine import run_counter_once, is_ip_alive
 from ui.method_window import MethodWindow
 
-
-# ================= LOG =================
-class LogStream:
-    def __init__(self, text_edit):
-        self.text_edit = text_edit
-
-    def write(self, message):
-        if message.strip():
-            self.text_edit.append(message)
-
-    def flush(self):
-        pass
+logger = logging.getLogger(__name__)
 
 
 # ================= UNIT FORM =================
@@ -36,58 +26,125 @@ class UnitDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        self.setWindowTitle("Quản lý Đơn Vị")
-        self.resize(500, 350)
-
-        layout = QGridLayout()
-
-        self.txt_code = QTextEdit()
-        self.txt_name = QTextEdit()
-        self.txt_address = QTextEdit()
-        self.txt_ward = QTextEdit()
-        self.txt_city = QTextEdit()
-        self.txt_contact = QTextEdit()
-        self.txt_phone = QTextEdit()
-
-        layout.addWidget(QLabel("Mã Đơn Vị"), 0, 0)
-        layout.addWidget(self.txt_code, 0, 1)
-
-        layout.addWidget(QLabel("Tên Đơn Vị"), 1, 0)
-        layout.addWidget(self.txt_name, 1, 1)
-
-        layout.addWidget(QLabel("Địa chỉ"), 2, 0)
-        layout.addWidget(self.txt_address, 2, 1)
-
-        layout.addWidget(QLabel("Phường"), 3, 0)
-        layout.addWidget(self.txt_ward, 3, 1)
-
-        layout.addWidget(QLabel("Thành phố"), 4, 0)
-        layout.addWidget(self.txt_city, 4, 1)
-
-        layout.addWidget(QLabel("Người liên hệ"), 5, 0)
-        layout.addWidget(self.txt_contact, 5, 1)
-
-        layout.addWidget(QLabel("Điện thoại"), 6, 0)
-        layout.addWidget(self.txt_phone, 6, 1)
-
-        btn_save = QPushButton("💾 Lưu")
-        btn_save.clicked.connect(self.save_data)
-        layout.addWidget(btn_save, 7, 1)
-
-        self.setLayout(layout)
+        self.setWindowTitle("Cấu Hình Thông Tin Đơn Vị")
+        self.resize(550, 500)
+        self.init_ui()
         self.load_data()
+
+    def init_ui(self):
+        # Master Layout
+        layout = QVBoxLayout()
+        layout.setSpacing(15)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        # Style chung cho Dialog
+        self.setStyleSheet("""
+            QDialog { background-color: #f9f9f9; }
+            QGroupBox { 
+                font-weight: bold; 
+                border: 1px solid #dcdcdc; 
+                border-radius: 8px; 
+                margin-top: 15px;
+                padding-top: 10px;
+                background-color: white;
+            }
+            QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; color: #2b3a8a; }
+            QLineEdit, QTextEdit { 
+                border: 1px solid #ccc; 
+                border-radius: 4px; 
+                padding: 6px; 
+                background: white;
+            }
+            QLineEdit:focus, QTextEdit:focus { border: 1px solid #2b3a8a; background: #f0f4ff; }
+            QLabel { color: #555; }
+        """)
+
+        # --- NHÓM 1: THÔNG TIN ĐƠN VỊ ---
+        group_org = QGroupBox("🏢 Thông Tin Tổ Chức")
+        form_org = QFormLayout()
+        form_org.setSpacing(10)
+        form_org.setLabelAlignment(Qt.AlignLeft)
+
+        self.txt_code = QLineEdit()
+        self.txt_code.setPlaceholderText("Ví dụ: DV001")
+        self.txt_name = QLineEdit()
+        self.txt_name.setPlaceholderText("Tên đầy đủ của đơn vị/công ty")
+        self.txt_address = QLineEdit()
+        
+        form_org.addRow("Mã Đơn Vị:", self.txt_code)
+        form_org.addRow("Tên Đơn Vị:", self.txt_name)
+        form_org.addRow("Địa Chỉ:", self.txt_address)
+
+        self.txt_ward = QLineEdit()
+        self.txt_ward.setPlaceholderText("Phường/Xã")
+        self.txt_city = QLineEdit()
+        self.txt_city.setPlaceholderText("Quận/Huyện - Tỉnh/TP")
+
+        form_org.addRow("Phường/Xã:", self.txt_ward)
+        form_org.addRow("Tỉnh/Thành:", self.txt_city)
+
+        group_org.setLayout(form_org)
+        layout.addWidget(group_org)
+
+        # --- NHÓM 2: THÔNG TIN LIÊN HỆ ---
+        group_contact = QGroupBox("📞 Người Đại Diện / Liên Hệ")
+        form_contact = QFormLayout()
+        form_contact.setSpacing(10)
+
+        self.txt_contact = QLineEdit()
+        self.txt_phone = QLineEdit()
+        self.txt_phone.setPlaceholderText("Số điện thoại liên lạc")
+
+        form_contact.addRow("Người Liên Hệ:", self.txt_contact)
+        form_contact.addRow("Điện Thoại:", self.txt_phone)
+
+        group_contact.setLayout(form_contact)
+        layout.addWidget(group_contact)
+
+        layout.addStretch()
+
+        # --- BUTTONS ---
+        btn_layout = QHBoxLayout()
+        
+        self.btn_save = QPushButton("  Lưu Cấu Hình")
+        self.btn_save.setMinimumHeight(40)
+        self.btn_save.setStyleSheet("""
+            QPushButton {
+                background-color: #2b3a8a;
+                color: white;
+                font-weight: bold;
+                font-size: 14px;
+                border: none;
+                border-radius: 5px;
+            }
+            QPushButton:hover { background-color: #3d4fb3; }
+            QPushButton:pressed { background-color: #1a255e; }
+        """)
+        self.btn_save.clicked.connect(self.save_data)
+
+        self.btn_cancel = QPushButton("Đóng")
+        self.btn_cancel.setMinimumHeight(40)
+        self.btn_cancel.setFixedWidth(100)
+        self.btn_cancel.clicked.connect(self.reject)
+
+        btn_layout.addStretch()
+        btn_layout.addWidget(self.btn_cancel)
+        btn_layout.addWidget(self.btn_save)
+
+        layout.addLayout(btn_layout)
+        self.setLayout(layout)
 
     def load_data(self):
         data = query("SELECT * FROM danh_muc_don_vi WHERE id_donvi = 1", fetch=True)
         if data:
             d = data[0]
-            self.txt_code.setPlainText(d["code_don_vi"])
-            self.txt_name.setPlainText(d["name_don_vi"])
-            self.txt_address.setPlainText(d["address_don_vi"])
-            self.txt_ward.setPlainText(d["ward_don_vi"])
-            self.txt_city.setPlainText(d["city_don_vi"])
-            self.txt_contact.setPlainText(d["contact_name"])
-            self.txt_phone.setPlainText(str(d["contact_phone"]))
+            self.txt_code.setText(d["code_don_vi"])
+            self.txt_name.setText(d["name_don_vi"])
+            self.txt_address.setText(d["address_don_vi"])
+            self.txt_ward.setText(d["ward_don_vi"])
+            self.txt_city.setText(d["city_don_vi"])
+            self.txt_contact.setText(d["contact_name"])
+            self.txt_phone.setText(str(d["contact_phone"]))
 
     def save_data(self):
         query("""
@@ -97,20 +154,26 @@ class UnitDialog(QDialog):
                 contact_name=?, contact_phone=?
             WHERE id_donvi=1
         """, (
-            self.txt_code.toPlainText(),
-            self.txt_name.toPlainText(),
-            self.txt_address.toPlainText(),
-            self.txt_ward.toPlainText(),
-            self.txt_city.toPlainText(),
-            self.txt_contact.toPlainText(),
-            self.txt_phone.toPlainText()
+            self.txt_code.text(),
+            self.txt_name.text(),
+            self.txt_address.text(),
+            self.txt_ward.text(),
+            self.txt_city.text(),
+            self.txt_contact.text(),
+            self.txt_phone.text()
         ))
-        print("✅ Đã lưu đơn vị")
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Thông báo")
+        msg.setText("✅ Cập nhật thông tin đơn vị thành công!")
+        msg.exec()
         self.accept()
 
 
 # ================= MAIN =================
 class MainWindow(QMainWindow):
+    # Khai báo Signal để truyền tin từ thread khác về UI
+    progress_signal = Signal(str) 
+
     def __init__(self):
         super().__init__()
 
@@ -119,15 +182,13 @@ class MainWindow(QMainWindow):
 
         self.init_ui()
 
-        # ✅ clear log khi khởi động
-        self.log_box.clear()
+        # Kết nối Signal với hàm xử lý thông minh
+        self.progress_signal.connect(self._handle_status_update)
 
-        sys.stdout = LogStream(self.log_box)
+        sys.stdout = sys.__stdout__ # Khôi phục stdout chuẩn
 
         self.load_unit_info()
         self.load_machines()
-
-        # xoa threading.Thread(target=run_counter_once, daemon=True).start()
 
     # ================= UI =================
     def init_ui(self):
@@ -177,6 +238,7 @@ class MainWindow(QMainWindow):
         self.btn_donvi.clicked.connect(self.open_unit_dialog)
         self.btn_machine.clicked.connect(self.open_machine_window)
         self.btn_method.clicked.connect(self.open_method_window)
+        self.btn_counter.clicked.connect(self.trigger_counter) # <-- Thêm dòng này
         self.btn_exit.clicked.connect(self.close)
 
         layout.addLayout(header)
@@ -220,46 +282,112 @@ class MainWindow(QMainWindow):
         from PySide6.QtWidgets import QSplitter
         from PySide6.QtCore import Qt
 
-        right_layout = QVBoxLayout()
+        right_layout = QVBoxLayout()  # <-- Thêm lại dòng này
 
         # Table log
-        self.table_log = self.create_log_table() # tạo table log
-        self.table_log.keyPressEvent = self.log_table_keypress # bắt sự kiện phím để xóa log
-
-        # Log box
-        self.log_box = QTextEdit()
-        self.log_box.setMaximumHeight(120)
+        self.table_log = self.create_log_table() 
+        self.table_log.keyPressEvent = self.log_table_keypress 
 
         # 👉 Wrap lại (giữ style card cũ)
         log_table_widget = self.wrap_card(self.table_log)
-        log_box_widget = self.wrap_card(self.log_box)
+        right_layout.addWidget(log_table_widget)
 
-        # 👉 Splitter (kéo được)
-        splitter = QSplitter(Qt.Vertical)
-        splitter.addWidget(log_table_widget)
-        splitter.addWidget(log_box_widget)
-
-        # 👉 Tỷ lệ hiển thị (table lớn hơn)
-        splitter.setStretchFactor(0, 4)
-        splitter.setStretchFactor(1, 1)
-
-        # 👉 Size ban đầu
-        splitter.setSizes([500, 120])
-
-        # 👉 (OPTIONAL) thanh kéo đẹp hơn
-        splitter.setHandleWidth(6)
-
-        right_layout.addWidget(splitter)
-
-        ########### HIEN THI COUNTER TONG #############
-
-        self.label_total = QLabel("Total: 0 | B/W: 0 | Color: 0")
-        right_layout.addWidget(self.label_total)
+        # Thanh trạng thái (Status Bar) thay cho label cũ
+        self.status_label = QLabel(" ⚪ Sẵn sàng")
+        self.status_label.setMinimumHeight(35)
+        self.status_label.setStyleSheet("""
+            background: #ffffff;
+            border: 1px solid #dcdcdc;
+            padding-left: 10px;
+            font-weight: bold;
+            color: #555;
+            border-bottom-left-radius: 6px;
+            border-bottom-right-radius: 6px;
+        """)
+        right_layout.addWidget(self.status_label)
 
         body.addLayout(right_layout, 1)
 
         layout.addLayout(body)
         main.setLayout(layout)
+
+    # ================= TRIGGER COUNTER =================
+    def trigger_counter(self):
+        """Khởi chạy quá trình lấy counter trong thread riêng."""
+        # Chặn nếu đang chạy
+        if not self.btn_counter.isEnabled():
+            return
+
+        self.btn_counter.setEnabled(False) 
+        self.status_label.setStyleSheet("background: #fff4e6; color: #d9480f; font-weight: bold; padding-left:10px;")
+        
+        thread = threading.Thread(target=self._run_counter_logic, daemon=True)
+        thread.start()
+
+    def _run_counter_logic(self):
+        try:
+            # Truyền callback để phát Signal
+            run_counter_once(
+                on_machine_finished=self._report_machine_online,
+                on_progress=lambda msg: self.progress_signal.emit(f" 🔍 {msg}")
+            )
+        except Exception as e:
+            logger.error("Lỗi thực thi counter: %s", e)
+            self.progress_signal.emit(f" ❌ Lỗi: {str(e)}")
+        finally:
+            # Phát tín hiệu báo kết thúc để UI khôi phục nút bấm
+            self.progress_signal.emit("FINISH_PROCESS")
+
+    def _handle_status_update(self, msg):
+        """Xử lý tín hiệu trả về: cập nhật text status hoặc cập nhật icon IP hoặc kết thúc."""
+        if msg == "FINISH_PROCESS":
+            self._on_counter_finished()
+        elif msg.startswith("UPDATE_IP:"):
+            try:
+                _, row, icon = msg.split(":")
+                item = QTableWidgetItem(icon)
+                item.setTextAlignment(Qt.AlignCenter)
+                self.table_machine.setItem(int(row), 3, item)
+            except: pass
+        else:
+            self.status_label.setText(msg)
+
+    def _report_machine_online(self, code_machine, is_online):
+        """Được gọi từ thread khác để cập nhật icon Online."""
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(0, lambda: self._update_row_online(code_machine, is_online))
+
+    def _update_row_online(self, code_machine, is_online):
+        """Cập nhật icon xanh/đỏ cho một dòng cụ thể trên bảng."""
+        for row in range(self.table_machine.rowCount()):
+            item = self.table_machine.item(row, 0)
+            if item and item.text() == code_machine:
+                icon = "🟢" if is_online else "🔴"
+                item_online = QTableWidgetItem(icon)
+                item_online.setTextAlignment(Qt.AlignCenter)
+                self.table_machine.setItem(row, 3, item_online)
+                break
+
+    def _on_counter_finished(self):
+        # 🟢 1. Khôi phục nút bấm ngay lập tức
+        self.btn_counter.setEnabled(True)
+        self.btn_counter.setText("COUNTER")
+        self.status_label.setStyleSheet("background: #d4edda; color: #155724; font-weight: bold; padding-left:10px;")
+        self.status_label.setText(" ✅ Hoàn tất chu trình lấy counter.")
+        
+        # 🟢 2. Ép hệ thống vẽ lại giao diện nút bấm
+        QCoreApplication.processEvents()
+        
+        # 3. Reload danh sách máy (chạy ngầm)
+        self.load_machines() 
+        
+        # 4. Cập nhật log máy đang chọn
+        current_row = self.table_machine.currentRow()
+        if current_row != -1:
+            code = self.table_machine.item(current_row, 0).text()
+            self.load_logs(code)
+            
+        logger.info("✅ Quá trình lấy counter hoàn tất.")
 
     # ===== WRAP CARD =====
     def wrap_card(self, widget):
@@ -402,11 +530,16 @@ class MainWindow(QMainWindow):
             self.table_machine.setItem(row, 1, QTableWidgetItem(name))
             self.table_machine.setItem(row, 2, QTableWidgetItem(ip))
 
-            # ===== ONLINE =====
-            online = self.check_online(ip)
-            item_online = QTableWidgetItem("🟢" if online else "🔴")
-            item_online.setTextAlignment(Qt.AlignCenter)
-            self.table_machine.setItem(row, 3, item_online)
+            # ===== ONLINE (Quét bất đồng bộ) =====
+            item_status = QTableWidgetItem("⚪")
+            item_status.setTextAlignment(Qt.AlignCenter)
+            self.table_machine.setItem(row, 3, item_status)
+            
+            # Gửi yêu cầu quét ngầm
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(row * 100, lambda r=row, i=ip: self._async_check_online(r, i))
+
+            # ===== BUTTON XEM =====
 
             # ===== BUTTON XEM =====
             url = f"http://{ip}{path}"
@@ -448,7 +581,8 @@ class MainWindow(QMainWindow):
             try:
                 dt = datetime.fromisoformat(log["timestamp"])
                 time_str = dt.strftime("%d/%m/%y %H:%M")
-            except:
+            except ValueError:
+                logger.warning("Cannot parse timestamp: %s", log["timestamp"])
                 time_str = log["timestamp"]
 
             item_time = QTableWidgetItem(time_str)
@@ -490,12 +624,19 @@ class MainWindow(QMainWindow):
             color += log["color_counter"]
 
     # ================= UTILS =================
+    def _async_check_online(self, row, ip):
+        """Kiểm tra IP và cập nhật đúng dòng trên table mà không block UI."""
+        def task():
+            online = self.check_online(ip)
+            icon = "🟢" if online else "🔴"
+            # Cập nhật lại UI từ thread
+            self.progress_signal.emit(f"UPDATE_IP:{row}:{icon}")
+            
+        threading.Thread(target=task, daemon=True).start()
+
     def check_online(self, ip):
-        try:
-            socket.create_connection((ip, 80), timeout=1)
-            return True
-        except:
-            return False
+        # Tăng timeout lên 2.5s để tránh báo Offline nhầm do mạng chậm
+        return is_ip_alive(ip, timeout=2.5)
         
     # =================== Hien thi RAW DANG TEXT=================
     def show_raw_text(self, raw):

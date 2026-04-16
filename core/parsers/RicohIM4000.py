@@ -1,4 +1,7 @@
 import re
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def extract_between(raw, start, end):
@@ -13,7 +16,7 @@ def extract_td_numbers(block):
 
 
 def parse(raw):
-    print("🔥 RUN PARSER RICOH IM4000")
+    logger.debug("Running parser: RicohIM4000")
 
     result = {
         "total": 0,

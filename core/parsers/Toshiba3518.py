@@ -1,4 +1,7 @@
+import logging
 from bs4 import BeautifulSoup
+
+logger = logging.getLogger(__name__)
 
 
 def get_value(soup, element_id):
@@ -6,13 +9,14 @@ def get_value(soup, element_id):
     if el:
         try:
             return int(el.text.strip())
-        except:
+        except ValueError as e:
+            logger.error("Cannot parse int from element '%s': %s", element_id, e)
             return 0
     return 0
 
 
 def parse(html):
-    print("🔥 PARSER TOSHIBA 3518")
+    logger.debug("Running parser: Toshiba3518")
 
     soup = BeautifulSoup(html, "lxml")
 
@@ -31,6 +35,6 @@ def parse(html):
         "scan": scan,
     }
 
-    print("👉 Toshiba result:", result)
+    logger.debug("Toshiba3518 result: %s", result)
 
     return result

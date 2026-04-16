@@ -1,8 +1,15 @@
 import sys
 import os
+import logging
+
+# ✅ Setup logging TRƯỚC KHI import bất kỳ module nào khác
+from core.logger import setup_logging
+setup_logging()
+
+logger = logging.getLogger(__name__)
 
 from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import QTimer  # dùng để delay
+from PySide6.QtCore import QTimer
 
 from database.init_db import init_db
 from database.db import query
@@ -17,12 +24,10 @@ DB_PATH = "data/agent.db"
 def reset_db():
     if os.path.exists(DB_PATH):
         os.remove(DB_PATH)
-        print("🗑️ Deleted old database")
+        logger.info("Deleted old database")
 
     init_db()
-    # seed_data()
-
-    print("✅ Database reset complete")
+    logger.info("Database reset complete")
 
 
 # ================= SEED DATA =================
@@ -88,23 +93,23 @@ def seed_data():
      30, 3, 'T001', '', 'DV001')
     """)
 
+    logger.info("Seed data inserted")
+
 
 # ================= MAIN =================
 def main():
-    # 🔥 nếu chưa có DB → tạo mới
     if not os.path.exists(DB_PATH):
-        print("⚙️ First run → init database")
+        logger.info("First run → initializing database")
         init_db()
         seed_data()
 
-    # ===== RUN UI =====
     app = QApplication(sys.argv)
 
     window = MainWindow()
     window.show()
 
-    # ✅ delay 5 giây rồi mới chạy counter (không block UI)
-    QTimer.singleShot(5000, run_counter_once)
+    # Delay 5 giây rồi tự động chạy quét counter (thông qua hàm của window để hiện tiến trình)
+    QTimer.singleShot(5000, window.trigger_counter)
 
     sys.exit(app.exec())
 

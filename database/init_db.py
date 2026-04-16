@@ -1,3 +1,6 @@
+from database.db import query
+
+
 def init_db():
 
     # ===== DANH MỤC ĐƠN VỊ =====

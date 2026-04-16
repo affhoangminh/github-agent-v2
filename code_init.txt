@@ -1,0 +1,15 @@
+
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+
+python -m venv venv
+
+.\venv\Scripts\Activate.ps1
+python main.py
+
+git fetch origin
+git checkout dev1.1
+git pull origin dev1.1
+
+
+Read ANTIGRAVITY_GUIDE.md and understand system architecture
+Apply all rules from ANTIGRAVITY_GUIDE.md before modifying code
